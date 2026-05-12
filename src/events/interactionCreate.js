@@ -75,16 +75,22 @@ module.exports = {
         const isLast = nextIdx >= total - 1;
         const content = buildPageContent(ads[nextIdx], nextIdx + 1, total);
 
+        // Strip the button from the old message so it stays where it is (no scrolling)
+        // Then send the new ad as a fresh message at the bottom
+        await interaction.update({ components: [] });
+
         if (isLast) {
           copySessions.delete(ownerId);
-          return interaction.update({ content: content + '\n\n✅ **Last ad! That\'s all of them.**', components: [] });
+          return interaction.followUp({ ephemeral: true, content: content + '\n\n✅ **Last ad! That\'s all of them.**', components: [] });
         }
 
-        return interaction.update({
+        return interaction.followUp({
+          ephemeral: true,
           content,
           components: [buildNextRow(ownerId, nextIdx + 1, total)],
         });
       }
+
 
       // Open a new ticket
       if (interaction.customId === 'ticket_open') {
