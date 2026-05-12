@@ -6,8 +6,9 @@ const { ordinal } = require('../commands/wave');
 const DELETE_DELAY = parseInt(process.env.DELETE_DELAY ?? '5000', 10);
 
 // Converts [label](url) masked links to plain URLs so the ad is copy-pasteable
+// Matches any [text](anything) format — covers https://, discord.gg/, etc.
 function stripMaskedLinks(text) {
-  return text.replace(/\[([^\]]*?)\]\((https?:\/\/[^)]+)\)/g, '$2');
+  return text.replace(/\[([^\]]*?)\]\(([^)]+)\)/g, '$2');
 }
 
 module.exports = {

@@ -18,6 +18,12 @@ function ordinal(n) {
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 
+// Strip [label](url) masked links to plain URLs — applied at both save AND send time
+// so old ads stored before this feature was added are also fixed
+function stripMaskedLinks(text) {
+  return text.replace(/\[([^\]]*?)\]\(([^)]+)\)/g, '$2');
+}
+
 const AD_DELAY = 8000;
 
 // Packs ads into ≤2000 char messages without splitting any single ad
@@ -101,8 +107,9 @@ async function sendWaveMessages(interaction, wave, useChannel = false, waveKey =
 
   const allAds = wave.ads ?? wave.links ?? [];
 
-  // Remove this server's own ad before sending
-  const ads = await filterAdsForGuild(interaction.client, allAds, interaction.guildId);
+  // Strip any residual masked links at send time (catches old stored ads)
+  const ads = (await filterAdsForGuild(interaction.client, allAds, interaction.guildId))
+    .map(stripMaskedLinks);
 
   if (ads.length === 0) {
     const msg = allAds.length > 0
@@ -153,16 +160,17 @@ async function dmWaveToUser(interaction, waveKey, wave) {
 
   try {
     const dmChannel = await interaction.user.createDM();
+    const strippedAds = ads.map(stripMaskedLinks);
 
     await dmChannel.send(
-      `📋 **Wave ready to paste — ${ads.length} server(s)**\nCopy each ad below and paste it manually.\n\u200b`
+      `📋 **Wave ready to paste — ${strippedAds.length} server(s)**\nCopy each ad below and paste it manually.\n\u200b`
     );
 
-    for (let i = 0; i < ads.length; i++) {
-      await dmChannel.send(`**Server ${i + 1}:**\n${ads[i]}`);
+    for (let i = 0; i < strippedAds.length; i++) {
+      await dmChannel.send(`**Server ${i + 1}:**\n${strippedAds[i]}`);
     }
 
-    await dmChannel.send(`✅ Done! All ${ads.length} ad(s) sent. Copy and paste each one above.`);
+    await dmChannel.send(`✅ Done! All ${strippedAds.length} ad(s) sent. Copy and paste each one above.`);
 
     return interaction.reply({
       content: `📬 Check your DMs — sent **${ads.length}** ad(s) for you to copy-paste!`,
@@ -199,7 +207,9 @@ function buildNextRow(userId, nextIdx, total) {
 
 async function executeCopy(interaction, wave) {
   const allAds = wave.ads ?? wave.links ?? [];
-  const ads = await getValidAdsForGuild(interaction.client, allAds, interaction.guildId);
+  // Strip masked links at display time + filter by guild/dead links
+  const ads = (await getValidAdsForGuild(interaction.client, allAds, interaction.guildId))
+    .map(stripMaskedLinks);
 
   if (ads.length === 0) {
     const msg = allAds.length > 0
