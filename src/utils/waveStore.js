@@ -1,77 +1,98 @@
-const fs = require('fs');
-const path = require('path');
+/**
+ * waveStore.js — User partner-ad wave store (SQLite)
+ *
+ * Replaces data/waves.json.
+ * Ads are stored as a JSON-serialized TEXT column since SQLite has no array type.
+ * All public functions are synchronous — better-sqlite3 is fully sync.
+ */
 
-const DATA_FILE = path.join(__dirname, '../../data/waves.json');
+const db = require('./db');
 
-function loadData() {
-  if (!fs.existsSync(DATA_FILE)) {
-    fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-    fs.writeFileSync(DATA_FILE, JSON.stringify({}));
-    return {};
-  }
-  try { return JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8')); }
-  catch { return {}; }
+// ─── Prepared statements ─────────────────────────────────────────────────────
+
+const stmtGet = db.prepare(
+  'SELECT * FROM waves WHERE user_id = ? AND name_key = ?'
+);
+const stmtGetAll = db.prepare(
+  'SELECT * FROM waves WHERE user_id = ?'
+);
+const stmtUpsert = db.prepare(`
+  INSERT INTO waves (user_id, name_key, display_name, ads, updated_at)
+  VALUES (?, ?, ?, ?, ?)
+  ON CONFLICT(user_id, name_key) DO UPDATE SET
+    display_name = excluded.display_name,
+    ads          = excluded.ads,
+    updated_at   = excluded.updated_at
+`);
+const stmtDelete = db.prepare(
+  'DELETE FROM waves WHERE user_id = ? AND name_key = ?'
+);
+const stmtDeleteOldKey = db.prepare(
+  'DELETE FROM waves WHERE user_id = ? AND name_key = ?'
+);
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function rowToWave(row) {
+  if (!row) return null;
+  return {
+    displayName: row.display_name,
+    ads:         JSON.parse(row.ads),
+    updatedAt:   row.updated_at,
+  };
 }
 
-function saveData(data) {
-  fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-}
+// ─── Public API (same as old waveStore) ──────────────────────────────────────
 
 function saveWave(userId, name, ads) {
-  const data = loadData();
-  if (!data[userId]) data[userId] = {};
-  data[userId][name.toLowerCase()] = { displayName: name, ads, updatedAt: Date.now() };
-  saveData(data);
+  stmtUpsert.run(userId, name.toLowerCase(), name, JSON.stringify(ads), Date.now());
 }
 
 function getWave(userId, name) {
-  const data = loadData();
-  return data[userId]?.[name.toLowerCase()] ?? null;
+  return rowToWave(stmtGet.get(userId, name.toLowerCase()));
 }
 
 function getUserWaves(userId) {
-  return loadData()[userId] ?? {};
+  const rows = stmtGetAll.all(userId);
+  const out  = {};
+  for (const row of rows) out[row.name_key] = rowToWave(row);
+  return out;
 }
 
 function deleteWave(userId, name) {
-  const data = loadData();
-  if (!data[userId]?.[name.toLowerCase()]) return false;
-  delete data[userId][name.toLowerCase()];
-  saveData(data);
+  const key    = name.toLowerCase();
+  const exists = stmtGet.get(userId, key);
+  if (!exists) return false;
+  stmtDelete.run(userId, key);
   return true;
 }
 
 function renameWave(userId, oldName, newName) {
-  const data = loadData();
-  const wave = data[userId]?.[oldName.toLowerCase()];
+  const oldKey = oldName.toLowerCase();
+  const newKey = newName.toLowerCase();
+  const wave   = rowToWave(stmtGet.get(userId, oldKey));
   if (!wave) return false;
-  wave.displayName = newName;
-  data[userId][newName.toLowerCase()] = wave;
-  if (oldName.toLowerCase() !== newName.toLowerCase()) {
-    delete data[userId][oldName.toLowerCase()];
-  }
-  saveData(data);
+
+  // Upsert under new key
+  stmtUpsert.run(userId, newKey, newName, JSON.stringify(wave.ads), Date.now());
+  // Remove old key (only if different)
+  if (oldKey !== newKey) stmtDeleteOldKey.run(userId, oldKey);
   return true;
 }
 
 function updateAd(userId, waveName, serverIndex, newAd) {
-  const data = loadData();
-  const wave = data[userId]?.[waveName.toLowerCase()];
+  const wave = rowToWave(stmtGet.get(userId, waveName.toLowerCase()));
   if (!wave || serverIndex < 0 || serverIndex >= wave.ads.length) return false;
   wave.ads[serverIndex] = newAd;
-  wave.updatedAt = Date.now();
-  saveData(data);
+  stmtUpsert.run(userId, waveName.toLowerCase(), wave.displayName, JSON.stringify(wave.ads), Date.now());
   return true;
 }
 
 function insertAd(userId, waveName, spliceIndex, newAd) {
-  const data = loadData();
-  const wave = data[userId]?.[waveName.toLowerCase()];
+  const wave = rowToWave(stmtGet.get(userId, waveName.toLowerCase()));
   if (!wave) return false;
   wave.ads.splice(spliceIndex, 0, newAd);
-  wave.updatedAt = Date.now();
-  saveData(data);
+  stmtUpsert.run(userId, waveName.toLowerCase(), wave.displayName, JSON.stringify(wave.ads), Date.now());
   return true;
 }
 

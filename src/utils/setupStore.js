@@ -1,29 +1,78 @@
-const fs = require('fs');
-const path = require('path');
-const DATA_FILE = path.join(__dirname, '../../data/setup.json');
+/**
+ * setupStore.js — Guild configuration store (SQLite)
+ *
+ * Replaces the old flat JSON file at data/setup.json.
+ * Preserves the same get(guildId) / set(guildId, key, value) API
+ * so no other files need to change.
+ *
+ * Column mapping (camelCase key → snake_case column):
+ *   welcomeChannelId    → welcome_channel_id
+ *   welcomeMessage      → welcome_message
+ *   autoroleId          → autorole_id
+ *   partnerChannelId    → partner_channel_id
+ *   adChannelId         → ad_channel_id
+ *   logChannelId        → log_channel_id
+ *   memberRoleId        → member_role_id
+ *   partnerPingRoleId   → partner_ping_role_id
+ *   partnerDelayHours   → partner_delay_hours
+ */
 
-function load() {
-  if (!fs.existsSync(DATA_FILE)) {
-    fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-    fs.writeFileSync(DATA_FILE, JSON.stringify({}));
-    return {};
+const db = require('./db');
+
+const KEY_MAP = {
+  welcomeChannelId:  'welcome_channel_id',
+  welcomeMessage:    'welcome_message',
+  autoroleId:        'autorole_id',
+  partnerChannelId:  'partner_channel_id',
+  adChannelId:       'ad_channel_id',
+  logChannelId:      'log_channel_id',
+  memberRoleId:      'member_role_id',
+  partnerPingRoleId: 'partner_ping_role_id',
+  partnerDelayHours: 'partner_delay_hours',
+};
+
+// Reverse map: column → camelCase
+const COL_MAP = Object.fromEntries(Object.entries(KEY_MAP).map(([k, v]) => [v, k]));
+
+const COLUMNS = Object.values(KEY_MAP);
+
+// ─── Prepared statements ─────────────────────────────────────────────────────
+
+const stmtGet = db.prepare('SELECT * FROM guild_config WHERE guild_id = ?');
+
+function ensureRow(guildId) {
+  db.prepare(
+    'INSERT OR IGNORE INTO guild_config (guild_id) VALUES (?)'
+  ).run(guildId);
+}
+
+// ─── Public API ──────────────────────────────────────────────────────────────
+
+/**
+ * Returns the full config object for a guild (camelCase keys).
+ */
+function get(guildId) {
+  const row = stmtGet.get(guildId);
+  if (!row) return {};
+  const out = {};
+  for (const col of COLUMNS) {
+    const camel = COL_MAP[col];
+    if (row[col] !== null && row[col] !== undefined) out[camel] = row[col];
   }
-  try { return JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8')); }
-  catch { return {}; }
+  return out;
 }
 
-function save(data) {
-  fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-}
-
-function get(guildId) { return load()[guildId] ?? {}; }
-
+/**
+ * Sets a single config key for a guild.
+ * @param {string} guildId
+ * @param {string} key   camelCase key (e.g. 'welcomeChannelId')
+ * @param {*}      value
+ */
 function set(guildId, key, value) {
-  const data = load();
-  if (!data[guildId]) data[guildId] = {};
-  data[guildId][key] = value;
-  save(data);
+  const col = KEY_MAP[key];
+  if (!col) throw new Error(`setupStore: unknown key "${key}"`);
+  ensureRow(guildId);
+  db.prepare(`UPDATE guild_config SET ${col} = ? WHERE guild_id = ?`).run(value, guildId);
 }
 
 module.exports = { get, set };

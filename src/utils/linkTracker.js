@@ -1,53 +1,61 @@
-const fs = require('fs');
-const path = require('path');
+/**
+ * linkTracker.js — Partner link tracking store (SQLite)
+ *
+ * Replaces data/partners.json.
+ * Uses two tables:
+ *   partner_links  — total count per user
+ *   partner_daily  — individual link records per user/date (for deduplication)
+ *
+ * Daily records older than 30 days are pruned on each addLinks call.
+ */
 
-const DATA_FILE = path.join(__dirname, '../../data/partners.json');
-
-// ─── Data Helpers ────────────────────────────────────────────────────────────
-
-function loadData() {
-  if (!fs.existsSync(DATA_FILE)) {
-    fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-    fs.writeFileSync(DATA_FILE, JSON.stringify({}));
-    return {};
-  }
-  try {
-    return JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
-  } catch {
-    return {};
-  }
-}
-
-function saveData(data) {
-  fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-}
+const db = require('./db');
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
-/**
- * Returns today's date key in YYYY-MM-DD format (local time).
- */
 function getTodayKey() {
   const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
+  const y   = now.getFullYear();
+  const m   = String(now.getMonth() + 1).padStart(2, '0');
+  const d   = String(now.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
 }
 
-/**
- * Extracts unique, normalized URLs from a message string.
- * Removes trailing punctuation and lowercases for deduplication.
- */
 function extractLinks(content) {
   const urlRegex = /https?:\/\/[^\s<>")\]]+/gi;
-  const matches = content.match(urlRegex) || [];
-  const normalized = matches.map(url =>
-    url.replace(/[.,;!?'"]+$/, '').toLowerCase()
-  );
+  const matches  = content.match(urlRegex) || [];
+  const normalized = matches.map(url => url.replace(/[.,;!?'"]+$/, '').toLowerCase());
   return [...new Set(normalized)];
 }
+
+// ─── Prepared statements ─────────────────────────────────────────────────────
+
+const stmtEnsureUser = db.prepare(`
+  INSERT OR IGNORE INTO partner_links (user_id, username, total_partners)
+  VALUES (?, ?, 0)
+`);
+const stmtUpdateUsername = db.prepare(
+  'UPDATE partner_links SET username = ? WHERE user_id = ?'
+);
+const stmtIncrTotal = db.prepare(
+  'UPDATE partner_links SET total_partners = total_partners + 1 WHERE user_id = ?'
+);
+const stmtGetUser = db.prepare(
+  'SELECT * FROM partner_links WHERE user_id = ?'
+);
+const stmtGetAll = db.prepare(
+  'SELECT * FROM partner_links ORDER BY total_partners DESC'
+);
+const stmtCheckLink = db.prepare(
+  'SELECT 1 FROM partner_daily WHERE user_id = ? AND date_key = ? AND link = ?'
+);
+const stmtInsertLink = db.prepare(
+  'INSERT OR IGNORE INTO partner_daily (user_id, date_key, link) VALUES (?, ?, ?)'
+);
+const stmtPruneOldDays = db.prepare(`
+  DELETE FROM partner_daily
+  WHERE user_id = ? AND date_key < date('now', '-30 days')
+`);
 
 // ─── Core Logic ───────────────────────────────────────────────────────────────
 
@@ -56,61 +64,47 @@ function extractLinks(content) {
  * @returns {{ newLinksAdded: number, totalPartners: number }}
  */
 function addLinks(userId, username, links) {
-  const data = loadData();
   const today = getTodayKey();
 
-  if (!data[userId]) {
-    data[userId] = {
-      username,
-      totalPartners: 0,
-      dailyLinks: {}
-    };
-  }
-
-  // Keep username up-to-date
-  data[userId].username = username;
-
-  if (!data[userId].dailyLinks[today]) {
-    data[userId].dailyLinks[today] = [];
-  }
+  stmtEnsureUser.run(userId, username);
+  stmtUpdateUsername.run(username, userId);
 
   let newLinksAdded = 0;
-  for (const link of links) {
-    const alreadyPostedToday = data[userId].dailyLinks[today].includes(link);
-    if (!alreadyPostedToday) {
-      data[userId].dailyLinks[today].push(link);
-      data[userId].totalPartners++;
+
+  const addOne = db.transaction((link) => {
+    const alreadyPosted = stmtCheckLink.get(userId, today, link);
+    if (!alreadyPosted) {
+      stmtInsertLink.run(userId, today, link);
+      stmtIncrTotal.run(userId);
       newLinksAdded++;
     }
-  }
+  });
 
-  // Trim old daily records (keep only last 30 days to avoid bloat)
-  const allDays = Object.keys(data[userId].dailyLinks).sort();
-  if (allDays.length > 30) {
-    for (const oldDay of allDays.slice(0, allDays.length - 30)) {
-      delete data[userId].dailyLinks[oldDay];
-    }
-  }
+  for (const link of links) addOne(link);
 
-  saveData(data);
-  return { newLinksAdded, totalPartners: data[userId].totalPartners };
+  // Prune old daily records (keep last 30 days)
+  stmtPruneOldDays.run(userId);
+
+  const row = stmtGetUser.get(userId);
+  return { newLinksAdded, totalPartners: row?.total_partners ?? 0 };
 }
 
-/**
- * Returns the total partner count for a specific user.
- */
 function getPartners(userId) {
-  const data = loadData();
-  const entry = data[userId];
-  if (!entry) return { totalPartners: 0, username: null };
-  return { totalPartners: entry.totalPartners, username: entry.username };
+  const row = stmtGetUser.get(userId);
+  if (!row) return { totalPartners: 0, username: null };
+  return { totalPartners: row.total_partners, username: row.username };
 }
 
-/**
- * Returns the full data map (all users).
- */
 function getAllPartners() {
-  return loadData();
+  const rows = stmtGetAll.all();
+  const out  = {};
+  for (const row of rows) {
+    out[row.user_id] = {
+      username:      row.username,
+      totalPartners: row.total_partners,
+    };
+  }
+  return out;
 }
 
 module.exports = { extractLinks, addLinks, getPartners, getAllPartners };

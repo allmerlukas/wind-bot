@@ -1,47 +1,53 @@
-const fs = require('fs');
-const path = require('path');
+/**
+ * giveawayManager.js — Giveaway system (SQLite-backed)
+ *
+ * Replaces data/giveaways.json.
+ * All giveaway state is in the `giveaways` table.
+ * Logic (embed building, winner picking, scheduling) is unchanged.
+ */
+
 const { EmbedBuilder } = require('discord.js');
+const db = require('./db');
 
-const DATA_FILE = path.join(__dirname, '../../data/giveaways.json');
+// ─── Prepared statements ─────────────────────────────────────────────────────
 
-// ─── Persistence ──────────────────────────────────────────────────────────────
+const stmtInsert = db.prepare(`
+  INSERT OR REPLACE INTO giveaways
+    (message_id, channel_id, guild_id, prize, description, winners_count, ends_at, host_id)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+`);
+const stmtDelete = db.prepare('DELETE FROM giveaways WHERE message_id = ?');
+const stmtGet    = db.prepare('SELECT * FROM giveaways WHERE message_id = ?');
+const stmtAll    = db.prepare('SELECT * FROM giveaways');
 
-function loadData() {
-  if (!fs.existsSync(DATA_FILE)) {
-    fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-    fs.writeFileSync(DATA_FILE, JSON.stringify([]));
-    return [];
-  }
-  try {
-    return JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
-  } catch {
-    return [];
-  }
-}
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function saveData(data) {
-  fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+function rowToGiveaway(row) {
+  if (!row) return null;
+  return {
+    messageId:    row.message_id,
+    channelId:    row.channel_id,
+    guildId:      row.guild_id,
+    prize:        row.prize,
+    description:  row.description,
+    winnersCount: row.winners_count,
+    endsAt:       row.ends_at,
+    hostId:       row.host_id,
+  };
 }
 
 // ─── Duration Parsing ─────────────────────────────────────────────────────────
 
-/**
- * Parses a duration string like "1d2h30m10s" into milliseconds.
- * Returns null if invalid or zero.
- */
 function parseDuration(str) {
   const regex = /^(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/i;
   const match = str.trim().match(regex);
   if (!match) return null;
-
   const [, d, h, m, s] = match;
   const ms =
     (parseInt(d ?? 0) * 86_400_000) +
-    (parseInt(h ?? 0) * 3_600_000) +
-    (parseInt(m ?? 0) * 60_000) +
+    (parseInt(h ?? 0) * 3_600_000)  +
+    (parseInt(m ?? 0) * 60_000)     +
     (parseInt(s ?? 0) * 1_000);
-
   return ms > 0 ? ms : null;
 }
 
@@ -87,20 +93,29 @@ function buildGiveawayEmbed(giveaway, ended = false) {
 // ─── Core Logic ───────────────────────────────────────────────────────────────
 
 function createGiveaway(data) {
-  const all = loadData();
-  all.push(data);
-  saveData(all);
+  stmtInsert.run(
+    data.messageId,
+    data.channelId,
+    data.guildId,
+    data.prize,
+    data.description ?? null,
+    data.winnersCount,
+    data.endsAt,
+    data.hostId,
+  );
 }
 
 function removeGiveaway(messageId) {
-  const all = loadData().filter(g => g.messageId !== messageId);
-  saveData(all);
+  stmtDelete.run(messageId);
+}
+
+function getGiveaway(messageId) {
+  return rowToGiveaway(stmtGet.get(messageId));
 }
 
 async function endGiveaway(messageId, client) {
-  const all = loadData();
-  const giveaway = all.find(g => g.messageId === messageId);
-  if (!giveaway) return; // Already ended or doesn't exist
+  const giveaway = getGiveaway(messageId);
+  if (!giveaway) return;
 
   try {
     const channel = await client.channels.fetch(giveaway.channelId).catch(() => null);
@@ -110,27 +125,22 @@ async function endGiveaway(messageId, client) {
     }
 
     const message = await channel.messages.fetch(messageId).catch(() => null);
-
     let winnerIds = [];
 
     if (message) {
       const reaction = message.reactions.cache.get('🎉');
       if (reaction) {
-        const users = await reaction.users.fetch();
+        const users   = await reaction.users.fetch();
         const entries = users.filter(u => !u.bot).map(u => u);
-
-        // Shuffle and pick
         const shuffled = [...entries].sort(() => Math.random() - 0.5);
-        const picked = shuffled.slice(0, Math.min(giveaway.winnersCount, shuffled.length));
+        const picked   = shuffled.slice(0, Math.min(giveaway.winnersCount, shuffled.length));
         winnerIds = picked.map(u => u.id);
       }
 
-      // Update the original embed
       const endedEmbed = buildGiveawayEmbed({ ...giveaway, winners: winnerIds }, true);
       await message.edit({ embeds: [endedEmbed] }).catch(() => {});
     }
 
-    // Announce winners
     const winnerMentions = winnerIds.map(id => `<@${id}>`).join(', ');
     const announceLine = winnerIds.length > 0
       ? `🎊 Congratulations ${winnerMentions}! You won **${giveaway.prize}**!\n> [Jump to giveaway](${message?.url ?? ''})`
@@ -148,7 +158,7 @@ async function endGiveaway(messageId, client) {
  * Called on bot startup — reschedules any giveaways that are still active.
  */
 async function initGiveaways(client) {
-  const all = loadData();
+  const all = stmtAll.all().map(rowToGiveaway);
   const now = Date.now();
 
   if (all.length > 0) {
@@ -158,17 +168,12 @@ async function initGiveaways(client) {
   for (const giveaway of all) {
     const remaining = giveaway.endsAt - now;
     if (remaining <= 0) {
-      // Ended while bot was offline — end it now
       await endGiveaway(giveaway.messageId, client);
     } else {
       setTimeout(() => endGiveaway(giveaway.messageId, client), remaining);
       console.log(`⏳ Giveaway "${giveaway.prize}" ends in ${Math.round(remaining / 1000)}s`);
     }
   }
-}
-
-function getGiveaway(messageId) {
-  return loadData().find(g => g.messageId === messageId) ?? null;
 }
 
 async function rigGiveaway(messageId, client, forcedWinnerId) {
@@ -182,13 +187,11 @@ async function rigGiveaway(messageId, client, forcedWinnerId) {
     const message = await channel.messages.fetch(messageId).catch(() => null);
     if (!message) return { ok: false, reason: 'message_not_found' };
 
-    // Verify the user actually entered
     const reaction = message.reactions.cache.get('🎉');
-    if (reaction) await reaction.users.fetch(); // populate cache
+    if (reaction) await reaction.users.fetch();
     const entered = reaction?.users.cache.has(forcedWinnerId) ?? false;
     if (!entered) return { ok: false, reason: 'not_entered' };
 
-    // Update embed and announce
     const endedEmbed = buildGiveawayEmbed({ ...giveaway, winners: [forcedWinnerId] }, true);
     await message.edit({ embeds: [endedEmbed] }).catch(() => {});
     await channel.send(

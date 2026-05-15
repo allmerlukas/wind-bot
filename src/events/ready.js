@@ -1,4 +1,5 @@
-const { initGiveaways } = require('../utils/giveawayManager');
+const { initGiveaways }  = require('../utils/giveawayManager');
+const { startAutoWave }  = require('../utils/autoWaveEngine');
 
 module.exports = {
   name: 'ready',
@@ -16,6 +17,9 @@ module.exports = {
 
     // Resume any giveaways that were running before the bot restarted
     await initGiveaways(client);
+
+    // Start the Auto-Wave engine (first tick after 30 min)
+    startAutoWave(client);
   }
 };
 
