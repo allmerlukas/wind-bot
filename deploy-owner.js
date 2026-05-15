@@ -19,6 +19,7 @@ const path = require('path');
 // ── Owner commands to deploy (guild-only) ────────────────────────────────────
 const OWNER_COMMANDS = [
   'owner.js',
+  'force.js',
   // Add more owner commands here as you create them
 ];
 

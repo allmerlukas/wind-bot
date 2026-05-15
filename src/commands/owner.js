@@ -6,6 +6,7 @@
  *   /owner guilds    — List every server the bot is in
  *   /owner autowave  — Show Auto-Wave enrollment across all guilds
  *   /owner broadcast — Send a message to every guild's log_channel
+ *   /owner error     — View the most recent bot errors
  */
 
 const {
@@ -13,40 +14,54 @@ const {
   EmbedBuilder,
 } = require('discord.js');
 
-const { checkOwner }  = require('../utils/ownerGuard');
-const setupStore      = require('../utils/setupStore');
+const { checkOwner }                     = require('../utils/ownerGuard');
+const setupStore                         = require('../utils/setupStore');
+const { getRecentErrors, getErrorCount } = require('../utils/errorStore');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('owner')
     .setDescription('Owner-only bot controls')
 
-    // ── status ───────────────────────────────────────────────────────────────
+    // status
     .addSubcommand(sub =>
       sub.setName('status')
         .setDescription('Show bot stats: uptime, memory, guilds, users')
     )
 
-    // ── guilds ───────────────────────────────────────────────────────────────
+    // guilds
     .addSubcommand(sub =>
       sub.setName('guilds')
         .setDescription('List all servers the bot is in')
     )
 
-    // ── autowave ─────────────────────────────────────────────────────────────
+    // autowave
     .addSubcommand(sub =>
       sub.setName('autowave')
         .setDescription('Show Auto-Wave config status across all guilds')
     )
 
-    // ── broadcast ────────────────────────────────────────────────────────────
+    // broadcast
     .addSubcommand(sub =>
       sub.setName('broadcast')
-        .setDescription('Send a message to every guild\'s log_channel')
+        .setDescription("Send a message to every guild's log_channel")
         .addStringOption(opt =>
           opt.setName('message')
             .setDescription('Message to broadcast')
             .setRequired(true)
+        )
+    )
+
+    // error
+    .addSubcommand(sub =>
+      sub.setName('error')
+        .setDescription('View the most recent bot errors')
+        .addIntegerOption(opt =>
+          opt.setName('count')
+            .setDescription('How many to show (1-20, default 10)')
+            .setMinValue(1)
+            .setMaxValue(20)
+            .setRequired(false)
         )
     ),
 
@@ -56,7 +71,7 @@ module.exports = {
     const sub    = interaction.options.getSubcommand();
     const client = interaction.client;
 
-    // ── /owner status ─────────────────────────────────────────────────────────
+    // /owner status
     if (sub === 'status') {
       const uptimeMs  = client.uptime ?? 0;
       const uptimeSec = Math.floor(uptimeMs / 1000);
@@ -66,7 +81,7 @@ module.exports = {
       const secs      = uptimeSec % 60;
       const uptimeStr = `${days}d ${hours}h ${mins}m ${secs}s`;
 
-      const memMB     = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(1);
+      const memMB      = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(1);
       const guildCount = client.guilds.cache.size;
       const userCount  = client.guilds.cache.reduce((a, g) => a + g.memberCount, 0);
       const ping       = client.ws.ping;
@@ -75,12 +90,12 @@ module.exports = {
         .setColor(0x5865F2)
         .setTitle('🤖 Bot Status')
         .addFields(
-          { name: '⏱️ Uptime',      value: uptimeStr,           inline: true },
-          { name: '🏓 Ping',        value: `${ping}ms`,         inline: true },
-          { name: '🧠 Memory',      value: `${memMB} MB`,       inline: true },
-          { name: '🌐 Guilds',      value: `${guildCount}`,     inline: true },
-          { name: '👥 Total Users', value: `${userCount}`,      inline: true },
-          { name: '📦 Node.js',     value: process.version,     inline: true },
+          { name: '⏱️ Uptime',      value: uptimeStr,       inline: true },
+          { name: '🏓 Ping',        value: `${ping}ms`,     inline: true },
+          { name: '🧠 Memory',      value: `${memMB} MB`,   inline: true },
+          { name: '🌐 Guilds',      value: `${guildCount}`, inline: true },
+          { name: '👥 Total Users', value: `${userCount}`,  inline: true },
+          { name: '📦 Node.js',     value: process.version, inline: true },
         )
         .setFooter({ text: `Logged in as ${client.user.tag}` })
         .setTimestamp();
@@ -88,7 +103,7 @@ module.exports = {
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
-    // ── /owner guilds ─────────────────────────────────────────────────────────
+    // /owner guilds
     if (sub === 'guilds') {
       const guilds = [...client.guilds.cache.values()]
         .sort((a, b) => b.memberCount - a.memberCount);
@@ -97,9 +112,8 @@ module.exports = {
         `\`${String(i + 1).padStart(2, '0')}.\` **${g.name}** — ${g.memberCount} members \`${g.id}\``
       );
 
-      // Split into pages of 15 if needed
-      const page   = lines.slice(0, 15).join('\n') || 'No guilds found.';
-      const more   = guilds.length > 15 ? `\n...and ${guilds.length - 15} more` : '';
+      const page = lines.slice(0, 15).join('\n') || 'No guilds found.';
+      const more = guilds.length > 15 ? `\n...and ${guilds.length - 15} more` : '';
 
       const embed = new EmbedBuilder()
         .setColor(0x57F287)
@@ -110,9 +124,9 @@ module.exports = {
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
-    // ── /owner autowave ───────────────────────────────────────────────────────
+    // /owner autowave
     if (sub === 'autowave') {
-      const guilds = [...client.guilds.cache.values()];
+      const guilds   = [...client.guilds.cache.values()];
       const enrolled = [];
       const missing  = [];
 
@@ -142,7 +156,7 @@ module.exports = {
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
-    // ── /owner broadcast ──────────────────────────────────────────────────────
+    // /owner broadcast
     if (sub === 'broadcast') {
       const message = interaction.options.getString('message');
       await interaction.deferReply({ ephemeral: true });
@@ -167,6 +181,34 @@ module.exports = {
       return interaction.editReply({
         content: `📢 Broadcast complete.\n✅ Sent to **${sent}** guilds | ❌ Failed/no log channel: **${failed}** guilds`,
       });
+    }
+
+    // /owner error
+    if (sub === 'error') {
+      const count  = interaction.options.getInteger('count') ?? 10;
+      const errors = getRecentErrors(count);
+      const total  = getErrorCount();
+
+      if (errors.length === 0) {
+        return interaction.reply({ content: '✅ No errors logged — all good!', ephemeral: true });
+      }
+
+      const lines = errors.map(e => {
+        const ts  = `<t:${Math.floor(e.occurred_at / 1000)}:R>`;
+        const src = `\`${e.source}\``;
+        const gld = e.guild_id ? ` • guild \`${e.guild_id}\`` : '';
+        const msg = e.message.slice(0, 200);
+        return `${ts} **${src}**${gld}\n> ${msg}`;
+      });
+
+      const embed = new EmbedBuilder()
+        .setColor(0xED4245)
+        .setTitle(`❌ Recent Errors (${errors.length} of ${total} stored)`)
+        .setDescription(lines.join('\n\n').slice(0, 4000))
+        .setFooter({ text: `Showing last ${count} • Max stored: 200` })
+        .setTimestamp();
+
+      return interaction.reply({ embeds: [embed], ephemeral: true });
     }
   },
 };

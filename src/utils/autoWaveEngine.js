@@ -21,6 +21,7 @@ const {
 
 const setupStore     = require('./setupStore');
 const autoWaveStore  = require('./autoWaveStore');
+const { logError }   = require('./errorStore');
 
 const TICK_MS          = 30 * 60 * 1000;   // 30 minutes
 const MIN_MEMBERS      = 25;               // minimum members to receive a partner
@@ -115,7 +116,7 @@ function buildAddBotRow(clientId) {
 
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setLabel('➕ Add WaveBot')
+      .setLabel('➕ Add Oblivion')
       .setStyle(ButtonStyle.Link)
       .setURL(inviteUrl)
   );
@@ -219,6 +220,7 @@ async function tick(client) {
         await logToGuild(sourceGuild, sourceCfg,
           `❌ **Auto-Wave failed:** Could not send ad to **${targetGuild.name}**: ${err.message}`
         );
+        logError('AutoWave', err, targetGuild.id);
         console.error(`[AutoWave] ❌ Failed to send to ${targetGuild.name}:`, err.message);
       }
 
@@ -226,6 +228,7 @@ async function tick(client) {
       break;
     }
   } catch (err) {
+    logError('AutoWave/Tick', err);
     console.error('[AutoWave] ❌ Tick error:', err);
   }
 }

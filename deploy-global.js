@@ -23,7 +23,8 @@ const GLOBAL_COMMANDS = [
   'timeout.js', 'userinfo.js', 'serverinfo.js', 'avatar.js', 'ping.js',
   'ticket.js', 'setup.js', 'lock.js', 'slowmode.js',
   'announce.js', 'poll.js', 'role.js',
-  'config.js',  // Auto-Wave configuration
+  'config.js',   // Auto-Wave configuration
+  'credits.js',  // Public credits command
 ];
 
 const commands = [];

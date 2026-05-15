@@ -107,6 +107,16 @@ db.exec(`
     ends_at       INTEGER NOT NULL,
     host_id       TEXT NOT NULL
   );
+
+  -- Bot error log (last 200 entries kept)
+  CREATE TABLE IF NOT EXISTS bot_errors (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    occurred_at INTEGER NOT NULL,
+    source     TEXT NOT NULL,  -- e.g. 'AutoWave', 'Command', 'Unhandled'
+    guild_id   TEXT,
+    message    TEXT NOT NULL,
+    stack      TEXT
+  );
 `);
 
 module.exports = db;
