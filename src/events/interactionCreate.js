@@ -1,14 +1,122 @@
 const waveStore = require('../utils/waveStore');
 const ticketStore = require('../utils/ticketStore');
 const { sendWaveMessages, dmWaveToUser, executeCopy, copySessions, buildPageContent, buildNextRow } = require('../commands/wave');
+const { STEPS, buildStepMessage, buildSummary } = require('../commands/config');
+const setupStore = require('../utils/setupStore');
 const {
   ChannelType, PermissionsBitField, ActionRowBuilder,
   ButtonBuilder, ButtonStyle, EmbedBuilder,
+  ModalBuilder, TextInputBuilder, TextInputStyle,
 } = require('discord.js');
 
 module.exports = {
   name: 'interactionCreate',
   async execute(interaction, client) {
+
+    // ── Config wizard: modal submit (delay hours) ─────────────────────────────
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('cfg_delay_modal:')) {
+      const stepIndex = parseInt(interaction.customId.split(':')[1], 10);
+      const raw       = interaction.fields.getTextInputValue('cfg_delay_input');
+      const hours     = parseInt(raw, 10);
+
+      if (isNaN(hours) || hours < 1) {
+        await interaction.reply({ content: '❌ Please enter a valid number of hours (minimum 1).', ephemeral: true });
+        return;
+      }
+
+      setupStore.set(interaction.guildId, 'partnerDelayHours', Math.max(hours, 1));
+
+      const nextStep = stepIndex + 1;
+      if (nextStep >= STEPS.length) {
+        return interaction.update({ embeds: [buildSummary(interaction.guildId)], components: [] });
+      }
+      return interaction.update(buildStepMessage(interaction.guildId, nextStep));
+    }
+
+    // ── Config wizard: channel select ─────────────────────────────────────────
+    if (interaction.isChannelSelectMenu() && interaction.customId.startsWith('cfg_')) {
+      const [stepId, stepIndexStr] = interaction.customId.split(':');
+      const stepIndex = parseInt(stepIndexStr, 10);
+      const step      = STEPS[stepIndex];
+      const channelId = interaction.values[0];
+
+      setupStore.set(interaction.guildId, step.storeKey, channelId);
+
+      const nextStep = stepIndex + 1;
+      if (nextStep >= STEPS.length) {
+        return interaction.update({ embeds: [buildSummary(interaction.guildId)], components: [] });
+      }
+      return interaction.update(buildStepMessage(interaction.guildId, nextStep));
+    }
+
+    // ── Config wizard: role select ────────────────────────────────────────────
+    if (interaction.isRoleSelectMenu() && interaction.customId.startsWith('cfg_')) {
+      const [stepId, stepIndexStr] = interaction.customId.split(':');
+      const stepIndex = parseInt(stepIndexStr, 10);
+      const step      = STEPS[stepIndex];
+      const roleId    = interaction.values[0];
+      const role      = interaction.guild.roles.cache.get(roleId);
+
+      // Run safety check if defined
+      if (step.checkFn && role) {
+        await interaction.deferUpdate();
+        const err = await step.checkFn(role, interaction.guild);
+        if (err) {
+          // Re-show same step with error
+          const msg = buildStepMessage(interaction.guildId, stepIndex);
+          msg.embeds[0] = EmbedBuilder.from(msg.embeds[0]).addFields({ name: '❌ Error', value: err, inline: false });
+          return interaction.editReply(msg);
+        }
+      }
+
+      setupStore.set(interaction.guildId, step.storeKey, roleId);
+
+      const nextStep = stepIndex + 1;
+      if (nextStep >= STEPS.length) {
+        if (interaction.deferred) {
+          return interaction.editReply({ embeds: [buildSummary(interaction.guildId)], components: [] });
+        }
+        return interaction.update({ embeds: [buildSummary(interaction.guildId)], components: [] });
+      }
+      const nextMsg = buildStepMessage(interaction.guildId, nextStep);
+      if (interaction.deferred) return interaction.editReply(nextMsg);
+      return interaction.update(nextMsg);
+    }
+
+    // ── Config wizard: delay button (opens modal) ─────────────────────────────
+    if (interaction.isButton() && interaction.customId.startsWith('cfg_delay_hours:')) {
+      const stepIndex = interaction.customId.split(':')[1];
+      const modal = new ModalBuilder()
+        .setCustomId(`cfg_delay_modal:${stepIndex}`)
+        .setTitle('Set Partner Delay');
+
+      const input = new TextInputBuilder()
+        .setCustomId('cfg_delay_input')
+        .setLabel('Minimum hours between partner ads')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('e.g. 24')
+        .setMinLength(1)
+        .setMaxLength(4)
+        .setRequired(true);
+
+      modal.addComponents(new ActionRowBuilder().addComponents(input));
+      return interaction.showModal(modal);
+    }
+
+    // ── Config wizard: skip step ──────────────────────────────────────────────
+    if (interaction.isButton() && interaction.customId.startsWith('cfg_skip:')) {
+      const stepIndex = parseInt(interaction.customId.split(':')[1], 10);
+      const nextStep  = stepIndex + 1;
+      if (nextStep >= STEPS.length) {
+        return interaction.update({ embeds: [buildSummary(interaction.guildId)], components: [] });
+      }
+      return interaction.update(buildStepMessage(interaction.guildId, nextStep));
+    }
+
+    // ── Config wizard: finish early ───────────────────────────────────────────
+    if (interaction.isButton() && interaction.customId === 'cfg_done') {
+      return interaction.update({ embeds: [buildSummary(interaction.guildId)], components: [] });
+    }
 
     // ── Select menu: wave paste picker ───────────────────────────────────────
     if (interaction.isStringSelectMenu()) {

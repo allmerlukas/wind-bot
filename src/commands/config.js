@@ -1,29 +1,190 @@
 /**
- * /config — Auto-Wave configuration command
+ * /config — Auto-Wave interactive setup wizard
  *
  * Subcommands:
- *   /config set  <option> <value>  — Set one config key for this server
- *   /config view                   — Display current config as an embed
+ *   /config setup  — Launch the interactive wizard (all settings in one flow)
+ *   /config view   — Show current config as an embed
  */
 
 const {
   SlashCommandBuilder,
   PermissionFlagsBits,
   EmbedBuilder,
+  ActionRowBuilder,
+  ChannelSelectMenuBuilder,
+  RoleSelectMenuBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   ChannelType,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
 } = require('discord.js');
 
 const setupStore = require('../utils/setupStore');
 
-// ─── Option definitions (keep in sync with the choices list below) ───────────
-const OPTIONS = {
-  partner_channel:    { key: 'partnerChannelId',    label: 'Partner Channel',       emoji: '📢' },
-  ad_channel:         { key: 'adChannelId',          label: 'Ad Channel',            emoji: '📝' },
-  log_channel:        { key: 'logChannelId',         label: 'Log Channel',           emoji: '📋' },
-  member_role:        { key: 'memberRoleId',          label: 'Member Role',           emoji: '👥' },
-  partner_ping_role:  { key: 'partnerPingRoleId',    label: 'Partner Ping Role',     emoji: '🔔' },
-  partner_delay_hours:{ key: 'partnerDelayHours',    label: 'Partner Delay (hours)', emoji: '⏱️' },
-};
+// ─── Wizard step definitions (in order) ─────────────────────────────────────
+// Each step has an id, label, description, and component type.
+
+const STEPS = [
+  {
+    id:          'cfg_partner_channel',
+    label:       '📢 Partner Channel',
+    description: 'Select the channel where **incoming** partner ads will be posted.',
+    type:        'channel',
+    storeKey:    'partnerChannelId',
+  },
+  {
+    id:          'cfg_ad_channel',
+    label:       '📝 Ad Channel',
+    description: 'Select the channel that contains **your server\'s own ad** (the bot reads the latest message there).',
+    type:        'channel',
+    storeKey:    'adChannelId',
+  },
+  {
+    id:          'cfg_log_channel',
+    label:       '📋 Log Channel',
+    description: 'Select the channel where the bot will log Auto-Wave activity and errors.',
+    type:        'channel',
+    storeKey:    'logChannelId',
+  },
+  {
+    id:          'cfg_member_role',
+    label:       '👥 Member Role',
+    description: 'Select the role held by **≥ 90%** of your members. Used as a ping for servers with 1,000+ members.',
+    type:        'role',
+    storeKey:    'memberRoleId',
+    checkFn:     async (role, guild) => {
+      await guild.members.fetch();
+      const pct = role.members.size / guild.memberCount;
+      if (pct < 0.90)
+        return `⚠️ **${role.name}** only covers **${Math.round(pct * 100)}%** of members — needs ≥ 90%. Pick a more common role.`;
+      return null;
+    },
+  },
+  {
+    id:          'cfg_ping_role',
+    label:       '🔔 Partner Ping Role',
+    description: 'Select the role pinged when a partner ad arrives (must cover **≤ 10%** of members — an opt-in role).',
+    type:        'role',
+    storeKey:    'partnerPingRoleId',
+    checkFn:     async (role, guild) => {
+      await guild.members.fetch();
+      const pct = role.members.size / guild.memberCount;
+      if (pct > 0.10)
+        return `⚠️ **${role.name}** covers **${Math.round(pct * 100)}%** of members — must be ≤ 10%. Use a smaller opt-in role.`;
+      return null;
+    },
+  },
+  {
+    id:          'cfg_delay_hours',
+    label:       '⏱️ Partner Delay',
+    description: 'Set the **minimum hours** between receiving two partner ads (minimum: 1 hour).',
+    type:        'modal',
+    storeKey:    'partnerDelayHours',
+  },
+];
+
+// ─── Helper: build wizard step message ───────────────────────────────────────
+
+function buildStepMessage(guildId, stepIndex) {
+  const step      = STEPS[stepIndex];
+  const cfg       = setupStore.get(guildId);
+  const completed = STEPS.slice(0, stepIndex).map((s, i) => {
+    const val = cfg[s.storeKey];
+    let display = val ?? '*not set*';
+    if (s.type === 'channel') display = val ? `<#${val}>` : '*not set*';
+    if (s.type === 'role')    display = val ? `<@&${val}>` : '*not set*';
+    return `${i + 1}. **${s.label}** — ${display} ✅`;
+  });
+
+  const embed = new EmbedBuilder()
+    .setColor(0x5865F2)
+    .setTitle(`⚙️ Config Wizard — Step ${stepIndex + 1} of ${STEPS.length}`)
+    .setDescription(
+      (completed.length ? completed.join('\n') + '\n\n' : '') +
+      `**→ ${step.label}**\n${step.description}`
+    )
+    .setFooter({ text: `Step ${stepIndex + 1}/${STEPS.length} • You can skip optional steps` })
+    .setTimestamp();
+
+  const rows = [];
+
+  if (step.type === 'channel') {
+    rows.push(
+      new ActionRowBuilder().addComponents(
+        new ChannelSelectMenuBuilder()
+          .setCustomId(`${step.id}:${stepIndex}`)
+          .setPlaceholder('Select a text channel…')
+          .addChannelTypes(ChannelType.GuildText)
+      )
+    );
+  } else if (step.type === 'role') {
+    rows.push(
+      new ActionRowBuilder().addComponents(
+        new RoleSelectMenuBuilder()
+          .setCustomId(`${step.id}:${stepIndex}`)
+          .setPlaceholder('Select a role…')
+      )
+    );
+  } else if (step.type === 'modal') {
+    rows.push(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`${step.id}:${stepIndex}`)
+          .setLabel('Set Delay Hours')
+          .setStyle(ButtonStyle.Primary)
+          .setEmoji('⏱️')
+      )
+    );
+  }
+
+  // Skip + Done buttons
+  const nav = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`cfg_skip:${stepIndex}`)
+      .setLabel('Skip')
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId('cfg_done')
+      .setLabel('Finish Setup')
+      .setStyle(ButtonStyle.Success)
+      .setEmoji('✅')
+  );
+  rows.push(nav);
+
+  return { embeds: [embed], components: rows };
+}
+
+// ─── Helper: build final summary ─────────────────────────────────────────────
+
+function buildSummary(guildId) {
+  const cfg = setupStore.get(guildId);
+  const fields = [
+    { name: '📢 Partner Channel',   value: cfg.partnerChannelId  ? `<#${cfg.partnerChannelId}>`  : '`not set`', inline: true },
+    { name: '📝 Ad Channel',         value: cfg.adChannelId        ? `<#${cfg.adChannelId}>`        : '`not set`', inline: true },
+    { name: '📋 Log Channel',         value: cfg.logChannelId       ? `<#${cfg.logChannelId}>`       : '`not set`', inline: true },
+    { name: '👥 Member Role',         value: cfg.memberRoleId       ? `<@&${cfg.memberRoleId}>`      : '`not set`', inline: true },
+    { name: '🔔 Partner Ping Role',   value: cfg.partnerPingRoleId  ? `<@&${cfg.partnerPingRoleId}>` : '`not set`', inline: true },
+    { name: '⏱️ Partner Delay',       value: `${cfg.partnerDelayHours ?? 24}h`,                       inline: true },
+  ];
+
+  const isReady = cfg.partnerChannelId && cfg.adChannelId;
+
+  return new EmbedBuilder()
+    .setColor(isReady ? 0x57F287 : 0xFEE75C)
+    .setTitle('✅ Config Saved!')
+    .setDescription(
+      isReady
+        ? '🌊 This server is now enrolled in Auto-Wave!'
+        : '⚠️ Set at least `Partner Channel` and `Ad Channel` to enable Auto-Wave.'
+    )
+    .addFields(fields)
+    .setFooter({ text: 'Auto-Wave • Run /config setup again to change anything' })
+    .setTimestamp();
+}
+
+// ─── Command export ───────────────────────────────────────────────────────────
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -31,228 +192,59 @@ module.exports = {
     .setDescription('Configure the Auto-Wave partner system for this server')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
 
-    // ── /config set ──────────────────────────────────────────────────────────
     .addSubcommand(sub =>
-      sub
-        .setName('set')
-        .setDescription('Set a config option for this server')
-        .addStringOption(opt =>
-          opt
-            .setName('option')
-            .setDescription('Which setting to configure')
-            .setRequired(true)
-            .addChoices(
-              { name: '📢 partner_channel — Where incoming partner ads are posted', value: 'partner_channel'     },
-              { name: '📝 ad_channel — Channel containing your server\'s ad',       value: 'ad_channel'          },
-              { name: '📋 log_channel — Where the bot logs wave activity',           value: 'log_channel'         },
-              { name: '👥 member_role — Role held by ≥90% of your members',         value: 'member_role'         },
-              { name: '🔔 partner_ping_role — Role pinged for incoming partners',   value: 'partner_ping_role'   },
-              { name: '⏱️ partner_delay_hours — Min hours between partners (≥0.5)', value: 'partner_delay_hours' },
-            )
-        )
-        .addChannelOption(opt =>
-          opt
-            .setName('channel')
-            .setDescription('Channel value (for partner_channel / ad_channel / log_channel)')
-            .addChannelTypes(ChannelType.GuildText)
-            .setRequired(false)
-        )
-        .addRoleOption(opt =>
-          opt
-            .setName('role')
-            .setDescription('Role value (for member_role / partner_ping_role)')
-            .setRequired(false)
-        )
-        .addIntegerOption(opt =>
-          opt
-            .setName('hours')
-            .setDescription('Hours value (for partner_delay_hours, minimum 1)')
-            .setMinValue(1)
-            .setRequired(false)
-        )
+      sub.setName('setup')
+        .setDescription('Launch the interactive Auto-Wave setup wizard')
     )
-
-    // ── /config view ─────────────────────────────────────────────────────────
     .addSubcommand(sub =>
-      sub
-        .setName('view')
+      sub.setName('view')
         .setDescription('View the current Auto-Wave config for this server')
     ),
 
-  // ───────────────────────────────────────────────────────────────────────────
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
 
     // ── /config view ─────────────────────────────────────────────────────────
     if (sub === 'view') {
-      const cfg = setupStore.get(interaction.guildId);
-
-      const partnerCh  = cfg.partnerChannelId   ? `<#${cfg.partnerChannelId}>`   : '`not set`';
-      const adCh       = cfg.adChannelId         ? `<#${cfg.adChannelId}>`         : '`not set`';
-      const logCh      = cfg.logChannelId        ? `<#${cfg.logChannelId}>`        : '`not set`';
-      const memberRole = cfg.memberRoleId        ? `<@&${cfg.memberRoleId}>`       : '`not set`';
-      const pingRole   = cfg.partnerPingRoleId   ? `<@&${cfg.partnerPingRoleId}>` : '`not set`';
-      const delay      = cfg.partnerDelayHours   ?? 24;
-
-      // Warn if the role safety checks might fail
-      const warnings = [];
-      if (cfg.memberRoleId) {
-        const role = interaction.guild.roles.cache.get(cfg.memberRoleId);
-        if (role) {
-          const pct = role.members.size / interaction.guild.memberCount;
-          if (pct < 0.90)
-            warnings.push(`⚠️ \`member_role\` covers only **${Math.round(pct * 100)}%** of members — needs ≥ 90% to be used for pings.`);
-        }
-      }
-      if (cfg.partnerPingRoleId) {
-        const role = interaction.guild.roles.cache.get(cfg.partnerPingRoleId);
-        if (role) {
-          const pct = role.members.size / interaction.guild.memberCount;
-          if (pct > 0.10)
-            warnings.push(`⚠️ \`partner_ping_role\` covers **${Math.round(pct * 100)}%** of members — must be ≤ 10% or it won't be used.`);
-        }
-      }
+      const cfg     = setupStore.get(interaction.guildId);
+      const isReady = cfg.partnerChannelId && cfg.adChannelId;
 
       const embed = new EmbedBuilder()
         .setColor(0x5865F2)
         .setTitle('⚙️ Auto-Wave Config')
         .setDescription(`Configuration for **${interaction.guild.name}**`)
         .addFields(
-          { name: '📢 Partner Channel',       value: partnerCh,  inline: true  },
-          { name: '📝 Ad Channel',             value: adCh,        inline: true  },
-          { name: '📋 Log Channel',             value: logCh,       inline: true  },
-          { name: '👥 Member Role',             value: memberRole,  inline: true  },
-          { name: '🔔 Partner Ping Role',       value: pingRole,    inline: true  },
-          { name: '⏱️ Partner Delay',           value: `${delay}h`, inline: true  },
+          { name: '📢 Partner Channel',   value: cfg.partnerChannelId  ? `<#${cfg.partnerChannelId}>`  : '`not set`', inline: true },
+          { name: '📝 Ad Channel',         value: cfg.adChannelId        ? `<#${cfg.adChannelId}>`        : '`not set`', inline: true },
+          { name: '📋 Log Channel',         value: cfg.logChannelId       ? `<#${cfg.logChannelId}>`       : '`not set`', inline: true },
+          { name: '👥 Member Role',         value: cfg.memberRoleId       ? `<@&${cfg.memberRoleId}>`      : '`not set`', inline: true },
+          { name: '🔔 Partner Ping Role',   value: cfg.partnerPingRoleId  ? `<@&${cfg.partnerPingRoleId}>` : '`not set`', inline: true },
+          { name: '⏱️ Partner Delay',       value: `${cfg.partnerDelayHours ?? 24}h`,                       inline: true },
+          {
+            name:  isReady ? '✅ Status' : '❌ Status',
+            value: isReady
+              ? 'This server is enrolled in Auto-Wave.'
+              : 'Set at least `Partner Channel` and `Ad Channel` to enable Auto-Wave.',
+            inline: false,
+          },
         )
-        .setFooter({ text: 'Auto-Wave Engine • Ticks every 30 min • Min cooldown 30 min' })
+        .setFooter({ text: 'Auto-Wave Engine • Run /config setup to change settings' })
         .setTimestamp();
-
-      if (warnings.length > 0) {
-        embed.addFields({ name: '⚠️ Warnings', value: warnings.join('\n'), inline: false });
-      }
-
-      // Ready status
-      const isReady = cfg.partnerChannelId && cfg.adChannelId;
-      embed.addFields({
-        name: isReady ? '✅ Status' : '❌ Status',
-        value: isReady
-          ? 'This server is enrolled in Auto-Wave.'
-          : 'Set at least `partner_channel` and `ad_channel` to enable Auto-Wave.',
-        inline: false,
-      });
 
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
-    // ── /config set ──────────────────────────────────────────────────────────
-    if (sub === 'set') {
-      const option  = interaction.options.getString('option');
-      const channel = interaction.options.getChannel('channel');
-      const role    = interaction.options.getRole('role');
-      const hours   = interaction.options.getInteger('hours');
-
-      const guild = interaction.guild;
-
-      // ── partner_channel ────────────────────────────────────────────────────
-      if (option === 'partner_channel') {
-        if (!channel) return interaction.reply({ content: '❌ Please provide a channel.', ephemeral: true });
-        setupStore.set(guild.id, 'partnerChannelId', channel.id);
-        return interaction.reply({
-          content: `✅ **Partner Channel** set to <#${channel.id}>.\nThe bot will post incoming partner ads here.`,
-          ephemeral: true,
-        });
-      }
-
-      // ── ad_channel ─────────────────────────────────────────────────────────
-      if (option === 'ad_channel') {
-        if (!channel) return interaction.reply({ content: '❌ Please provide a channel.', ephemeral: true });
-        setupStore.set(guild.id, 'adChannelId', channel.id);
-        return interaction.reply({
-          content: `✅ **Ad Channel** set to <#${channel.id}>.\nThe bot will read the most recent message here as your server's ad.`,
-          ephemeral: true,
-        });
-      }
-
-      // ── log_channel ────────────────────────────────────────────────────────
-      if (option === 'log_channel') {
-        if (!channel) return interaction.reply({ content: '❌ Please provide a channel.', ephemeral: true });
-        setupStore.set(guild.id, 'logChannelId', channel.id);
-        return interaction.reply({
-          content: `✅ **Log Channel** set to <#${channel.id}>.\nAuto-Wave activity will be logged here.`,
-          ephemeral: true,
-        });
-      }
-
-      // ── member_role ──────────────────────────────────────────────────────
-      if (option === 'member_role') {
-        if (!role) return interaction.reply({ content: '❌ Please provide a role.', ephemeral: true });
-
-        await interaction.deferReply({ ephemeral: true });
-
-        // Fetch all members so role.members.size is accurate
-        await guild.members.fetch();
-
-        const pct    = role.members.size / guild.memberCount;
-        const pctStr = `${Math.round(pct * 100)}%`;
-
-        if (pct < 0.90) {
-          return interaction.editReply({
-            content: [
-              `⚠️ **Role check failed.** <@&${role.id}> only covers **${pctStr}** of members in this server.`,
-              `The \`member_role\` must be assigned to **≥ 90%** of members (currently ${role.members.size}/${guild.memberCount}).`,
-              ``,
-              `Give this role to more members, then try again.`,
-            ].join('\n'),
-          });
-        }
-
-        setupStore.set(guild.id, 'memberRoleId', role.id);
-        return interaction.editReply({
-          content: `✅ **Member Role** set to <@&${role.id}> (${pctStr} of members — ✅ passes the 90% check).\nThis role will be pinged for servers with 1,000+ members.`,
-        });
-      }
-
-      // ── partner_ping_role ──────────────────────────────────────────────────
-      if (option === 'partner_ping_role') {
-        if (!role) return interaction.reply({ content: '❌ Please provide a role.', ephemeral: true });
-
-        await interaction.deferReply({ ephemeral: true });
-
-        // Fetch all members so role.members.size is accurate
-        await guild.members.fetch();
-
-        const pct    = role.members.size / guild.memberCount;
-        const pctStr = `${Math.round(pct * 100)}%`;
-
-        if (pct > 0.10) {
-          return interaction.editReply({
-            content: [
-              `⚠️ **Role check failed.** <@&${role.id}> covers **${pctStr}** of members — too many.`,
-              `The \`partner_ping_role\` must cover **≤ 10%** of members (currently ${role.members.size}/${guild.memberCount}).`,
-              ``,
-              `Use a more exclusive role (e.g. a dedicated "Partner Pings" opt-in role).`,
-            ].join('\n'),
-          });
-        }
-
-        setupStore.set(guild.id, 'partnerPingRoleId', role.id);
-        return interaction.editReply({
-          content: `✅ **Partner Ping Role** set to <@&${role.id}> (${pctStr} of members — ✅ passes the 10% check).\nThis role will be pinged for servers with 500–999 members.`,
-        });
-      }
-
-      // ── partner_delay_hours ────────────────────────────────────────────────
-      if (option === 'partner_delay_hours') {
-        if (!hours) return interaction.reply({ content: '❌ Please provide a number of hours (minimum 1).', ephemeral: true });
-        // Enforce minimum 0.5 h (stored as raw hours, engine clamps to 30 min)
-        const clamped = Math.max(hours, 1);
-        setupStore.set(guild.id, 'partnerDelayHours', clamped);
-        return interaction.reply({
-          content: `✅ **Partner Delay** set to **${clamped} hour(s)**.\nThis server won't receive a new partner ad more often than every ${clamped} hour(s). (Hard minimum: 30 min)`,
-          ephemeral: true,
-        });
-      }
+    // ── /config setup — start wizard at step 0 ────────────────────────────────
+    if (sub === 'setup') {
+      return interaction.reply({
+        ...buildStepMessage(interaction.guildId, 0),
+        ephemeral: true,
+      });
     }
   },
+
+  // ── Exported helpers for interactionCreate to call ───────────────────────────
+  STEPS,
+  buildStepMessage,
+  buildSummary,
 };
