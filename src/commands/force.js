@@ -21,6 +21,7 @@ const {
 const { checkOwner } = require('../utils/ownerGuard');
 const setupStore     = require('../utils/setupStore');
 const autoWaveStore  = require('../utils/autoWaveStore');
+const { recordPair } = require('../utils/pairStore');
 const { logError }   = require('../utils/errorStore');
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
@@ -47,7 +48,7 @@ async function resolvePing(targetGuild, targetCfg) {
   if (mc < 500) return '@here';
   if (mc < 1000) {
     const role = targetGuild.roles.cache.get(targetCfg.partnerPingRoleId);
-    if (role && role.members.size / mc <= 0.10) return `@here <@&${role.id}>`;
+    if (role && role.members.size / mc >= 0.10) return `@here <@&${role.id}>`;
     return '@here';
   }
   const role = targetGuild.roles.cache.get(targetCfg.memberRoleId);
@@ -71,6 +72,7 @@ async function sendAdToTarget(sourceGuild, targetGuild, targetCfg, adContent, cl
       },
     });
     autoWaveStore.setLastReceived(targetGuild.id);
+    recordPair(sourceGuild.id, targetGuild.id);
     return { ok: true, ping };
   } catch (err) {
     logError(`Force/Partner→${targetGuild.name}`, err, targetGuild.id);

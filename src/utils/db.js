@@ -112,10 +112,24 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS bot_errors (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     occurred_at INTEGER NOT NULL,
-    source     TEXT NOT NULL,  -- e.g. 'AutoWave', 'Command', 'Unhandled'
+    source     TEXT NOT NULL,
     guild_id   TEXT,
     message    TEXT NOT NULL,
     stack      TEXT
+  );
+
+  -- Tracks when two guilds last partnered together (bidirectional lookup)
+  CREATE TABLE IF NOT EXISTS partner_pairs (
+    guild_a       TEXT NOT NULL,   -- always the lexicographically smaller ID
+    guild_b       TEXT NOT NULL,   -- always the lexicographically larger ID
+    last_paired_at INTEGER NOT NULL,
+    PRIMARY KEY (guild_a, guild_b)
+  );
+
+  -- Persistent shuffled queue for source guild rotation
+  CREATE TABLE IF NOT EXISTS wave_queue (
+    id    INTEGER PRIMARY KEY DEFAULT 1,  -- single row
+    queue TEXT NOT NULL DEFAULT '[]'      -- JSON array of guild IDs
   );
 `);
 
