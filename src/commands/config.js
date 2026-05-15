@@ -184,30 +184,32 @@ module.exports = {
         });
       }
 
-      // ── member_role ────────────────────────────────────────────────────────
+      // ── member_role ──────────────────────────────────────────────────────
       if (option === 'member_role') {
         if (!role) return interaction.reply({ content: '❌ Please provide a role.', ephemeral: true });
 
-        // Safety check: must cover ≥ 90 % of members
-        const pct = role.members.size / guild.memberCount;
+        await interaction.deferReply({ ephemeral: true });
+
+        // Fetch all members so role.members.size is accurate
+        await guild.members.fetch();
+
+        const pct    = role.members.size / guild.memberCount;
         const pctStr = `${Math.round(pct * 100)}%`;
 
         if (pct < 0.90) {
-          return interaction.reply({
+          return interaction.editReply({
             content: [
               `⚠️ **Role check failed.** <@&${role.id}> only covers **${pctStr}** of members in this server.`,
               `The \`member_role\` must be assigned to **≥ 90%** of members (currently ${role.members.size}/${guild.memberCount}).`,
               ``,
               `Give this role to more members, then try again.`,
             ].join('\n'),
-            ephemeral: true,
           });
         }
 
         setupStore.set(guild.id, 'memberRoleId', role.id);
-        return interaction.reply({
+        return interaction.editReply({
           content: `✅ **Member Role** set to <@&${role.id}> (${pctStr} of members — ✅ passes the 90% check).\nThis role will be pinged for servers with 1,000+ members.`,
-          ephemeral: true,
         });
       }
 
@@ -215,26 +217,28 @@ module.exports = {
       if (option === 'partner_ping_role') {
         if (!role) return interaction.reply({ content: '❌ Please provide a role.', ephemeral: true });
 
-        // Safety check: must cover ≤ 10 % of members
-        const pct = role.members.size / guild.memberCount;
+        await interaction.deferReply({ ephemeral: true });
+
+        // Fetch all members so role.members.size is accurate
+        await guild.members.fetch();
+
+        const pct    = role.members.size / guild.memberCount;
         const pctStr = `${Math.round(pct * 100)}%`;
 
         if (pct > 0.10) {
-          return interaction.reply({
+          return interaction.editReply({
             content: [
               `⚠️ **Role check failed.** <@&${role.id}> covers **${pctStr}** of members — too many.`,
               `The \`partner_ping_role\` must cover **≤ 10%** of members (currently ${role.members.size}/${guild.memberCount}).`,
               ``,
               `Use a more exclusive role (e.g. a dedicated "Partner Pings" opt-in role).`,
             ].join('\n'),
-            ephemeral: true,
           });
         }
 
         setupStore.set(guild.id, 'partnerPingRoleId', role.id);
-        return interaction.reply({
+        return interaction.editReply({
           content: `✅ **Partner Ping Role** set to <@&${role.id}> (${pctStr} of members — ✅ passes the 10% check).\nThis role will be pinged for servers with 500–999 members.`,
-          ephemeral: true,
         });
       }
 
