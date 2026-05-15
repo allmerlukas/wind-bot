@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node index.js",
     "deploy": "node deploy-commands.js",
-    "deploy:global": "node deploy-global.js"
+    "deploy:global": "node deploy-global.js",
+    "deploy:owner": "node deploy-owner.js"
   },
   "dependencies": {
     "better-sqlite3": "^12.10.0",

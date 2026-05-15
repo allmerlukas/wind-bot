@@ -1,0 +1,172 @@
+/**
+ * /owner — Owner-only control panel
+ *
+ * Subcommands:
+ *   /owner status    — Bot stats: uptime, memory, guild count, user count
+ *   /owner guilds    — List every server the bot is in
+ *   /owner autowave  — Show Auto-Wave enrollment across all guilds
+ *   /owner broadcast — Send a message to every guild's log_channel
+ */
+
+const {
+  SlashCommandBuilder,
+  EmbedBuilder,
+} = require('discord.js');
+
+const { checkOwner }  = require('../utils/ownerGuard');
+const setupStore      = require('../utils/setupStore');
+
+module.exports = {
+  data: new SlashCommandBuilder()
+    .setName('owner')
+    .setDescription('Owner-only bot controls')
+
+    // ── status ───────────────────────────────────────────────────────────────
+    .addSubcommand(sub =>
+      sub.setName('status')
+        .setDescription('Show bot stats: uptime, memory, guilds, users')
+    )
+
+    // ── guilds ───────────────────────────────────────────────────────────────
+    .addSubcommand(sub =>
+      sub.setName('guilds')
+        .setDescription('List all servers the bot is in')
+    )
+
+    // ── autowave ─────────────────────────────────────────────────────────────
+    .addSubcommand(sub =>
+      sub.setName('autowave')
+        .setDescription('Show Auto-Wave config status across all guilds')
+    )
+
+    // ── broadcast ────────────────────────────────────────────────────────────
+    .addSubcommand(sub =>
+      sub.setName('broadcast')
+        .setDescription('Send a message to every guild\'s log_channel')
+        .addStringOption(opt =>
+          opt.setName('message')
+            .setDescription('Message to broadcast')
+            .setRequired(true)
+        )
+    ),
+
+  async execute(interaction) {
+    if (!await checkOwner(interaction)) return;
+
+    const sub    = interaction.options.getSubcommand();
+    const client = interaction.client;
+
+    // ── /owner status ─────────────────────────────────────────────────────────
+    if (sub === 'status') {
+      const uptimeMs  = client.uptime ?? 0;
+      const uptimeSec = Math.floor(uptimeMs / 1000);
+      const days      = Math.floor(uptimeSec / 86400);
+      const hours     = Math.floor((uptimeSec % 86400) / 3600);
+      const mins      = Math.floor((uptimeSec % 3600) / 60);
+      const secs      = uptimeSec % 60;
+      const uptimeStr = `${days}d ${hours}h ${mins}m ${secs}s`;
+
+      const memMB     = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(1);
+      const guildCount = client.guilds.cache.size;
+      const userCount  = client.guilds.cache.reduce((a, g) => a + g.memberCount, 0);
+      const ping       = client.ws.ping;
+
+      const embed = new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle('🤖 Bot Status')
+        .addFields(
+          { name: '⏱️ Uptime',      value: uptimeStr,           inline: true },
+          { name: '🏓 Ping',        value: `${ping}ms`,         inline: true },
+          { name: '🧠 Memory',      value: `${memMB} MB`,       inline: true },
+          { name: '🌐 Guilds',      value: `${guildCount}`,     inline: true },
+          { name: '👥 Total Users', value: `${userCount}`,      inline: true },
+          { name: '📦 Node.js',     value: process.version,     inline: true },
+        )
+        .setFooter({ text: `Logged in as ${client.user.tag}` })
+        .setTimestamp();
+
+      return interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+
+    // ── /owner guilds ─────────────────────────────────────────────────────────
+    if (sub === 'guilds') {
+      const guilds = [...client.guilds.cache.values()]
+        .sort((a, b) => b.memberCount - a.memberCount);
+
+      const lines = guilds.map((g, i) =>
+        `\`${String(i + 1).padStart(2, '0')}.\` **${g.name}** — ${g.memberCount} members \`${g.id}\``
+      );
+
+      // Split into pages of 15 if needed
+      const page   = lines.slice(0, 15).join('\n') || 'No guilds found.';
+      const more   = guilds.length > 15 ? `\n...and ${guilds.length - 15} more` : '';
+
+      const embed = new EmbedBuilder()
+        .setColor(0x57F287)
+        .setTitle(`🌐 Guilds (${guilds.length})`)
+        .setDescription(page + more)
+        .setTimestamp();
+
+      return interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+
+    // ── /owner autowave ───────────────────────────────────────────────────────
+    if (sub === 'autowave') {
+      const guilds = [...client.guilds.cache.values()];
+      const enrolled = [];
+      const missing  = [];
+
+      for (const guild of guilds) {
+        const cfg = setupStore.get(guild.id);
+        if (cfg.partnerChannelId && cfg.adChannelId) {
+          enrolled.push(`✅ **${guild.name}** — delay: ${cfg.partnerDelayHours ?? 24}h | members: ${guild.memberCount}`);
+        } else {
+          const what = [];
+          if (!cfg.partnerChannelId) what.push('partner_channel');
+          if (!cfg.adChannelId)      what.push('ad_channel');
+          missing.push(`❌ **${guild.name}** — missing: \`${what.join(', ')}\``);
+        }
+      }
+
+      const desc = [
+        enrolled.length ? `**Enrolled (${enrolled.length})**\n${enrolled.join('\n')}` : null,
+        missing.length  ? `\n**Not Configured (${missing.length})**\n${missing.join('\n')}` : null,
+      ].filter(Boolean).join('\n') || 'No guilds found.';
+
+      const embed = new EmbedBuilder()
+        .setColor(0xFEE75C)
+        .setTitle('🌊 Auto-Wave Enrollment')
+        .setDescription(desc.slice(0, 4000))
+        .setTimestamp();
+
+      return interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+
+    // ── /owner broadcast ──────────────────────────────────────────────────────
+    if (sub === 'broadcast') {
+      const message = interaction.options.getString('message');
+      await interaction.deferReply({ ephemeral: true });
+
+      let sent = 0, failed = 0;
+
+      for (const guild of client.guilds.cache.values()) {
+        const cfg = setupStore.get(guild.id);
+        if (!cfg.logChannelId) { failed++; continue; }
+
+        const ch = guild.channels.cache.get(cfg.logChannelId);
+        if (!ch?.isTextBased()) { failed++; continue; }
+
+        try {
+          await ch.send(`📢 **[Owner Broadcast]**\n${message}`);
+          sent++;
+        } catch {
+          failed++;
+        }
+      }
+
+      return interaction.editReply({
+        content: `📢 Broadcast complete.\n✅ Sent to **${sent}** guilds | ❌ Failed/no log channel: **${failed}** guilds`,
+      });
+    }
+  },
+};
