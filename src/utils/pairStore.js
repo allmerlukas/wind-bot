@@ -7,7 +7,7 @@
 
 const db = require('./db');
 
-const PAIR_COOLDOWN_MS = 48 * 60 * 60 * 1000; // 2 days
+const PAIR_COOLDOWN_MS = 72 * 60 * 60 * 1000; // 3 days (moving to 7 soon)
 
 // ─── Canonical pair key ───────────────────────────────────────────────────────
 

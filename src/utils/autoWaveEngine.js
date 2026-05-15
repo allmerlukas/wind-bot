@@ -1,33 +1,28 @@
 /**
- * autoWaveEngine.js — Auto-partner wave engine (v2)
+ * autoWaveEngine.js — Auto-partner wave engine (v3)
  *
  * Algorithm (every 30 min):
  *
- *  1. Collect all guilds with partner_channel + ad_channel configured.
- *     Need at least 2 to do anything.
+ *  1. Collect all configured guilds. Need at least 2.
  *
- *  2. SOURCE SELECTION — shuffled queue (random, no repeats until all served)
- *     Pop from a persisted shuffled queue. When the queue runs out, reshuffle
- *     all active guilds and start again. This prevents the same guild from
- *     always sending first, while avoiding pure randomness where one guild
- *     might never be picked.
+ *  2. SOURCE — pop next from persistent shuffled queue (random, no repeats
+ *     until all guilds have gone).
  *
- *  3. Fetch the latest ad from source's ad_channel.
+ *  3. Cache the ad: find the most recent message in the ad_channel that
+ *     contains a discord.gg invite link. Strip all @mentions from the text.
+ *     Validate the ad for non-whitelisted external links.
  *
- *  4. TARGET SELECTION — randomized with 2-day pair cooldown
- *     Shuffle all other configured guilds. Iterate through the shuffled list
- *     and pick the FIRST guild that passes ALL of:
+ *  4. TARGET — shuffle remaining guilds, iterate until we find one that:
  *       a. Has ≥ 25 members
- *       b. Per-server receive cooldown has passed (from /config partner_delay_hours)
- *       c. This specific source↔target pair has NOT partnered in the last 2 days
+ *       b. Per-server receive cooldown has passed
+ *       c. Source↔target pair hasn't partnered in the last 3 days
+ *       d. Neither guild is blacklisted
+ *       e. Target channel is accessible
  *
- *  5. Build ad + ping (based on target member count tiers) + Add Oblivion button.
+ *  5. Build ping (based on member count tier), send, record pair, log.
  *
- *  6. Send to target's partner_channel.
- *     Record the pair (source, target, timestamp).
- *     Log success to both guilds' log_channel.
- *
- *  7. Update per-server cooldown for the target.
+ * Validation failures are logged to the guild's log_channel silently.
+ * We intentionally don't expose the exact checks to end users.
  */
 
 const {
@@ -36,16 +31,26 @@ const {
   ButtonStyle,
 } = require('discord.js');
 
-const setupStore    = require('./setupStore');
-const autoWaveStore = require('./autoWaveStore');
-const { recordPair, pairedRecently, nextSource } = require('./pairStore');
-const { logError }  = require('./errorStore');
+const setupStore                                   = require('./setupStore');
+const autoWaveStore                                = require('./autoWaveStore');
+const { recordPair, pairedRecently, nextSource }   = require('./pairStore');
+const { isBlacklisted, getWhitelistedDomains }     = require('./blacklistStore');
+const { logError }                                 = require('./errorStore');
 
-const TICK_MS         = 30 * 60 * 1000;   // 30 minutes
+const TICK_MS         = 30 * 60 * 1000;
 const MIN_MEMBERS     = 25;
-const MIN_COOLDOWN_MS = 30 * 60 * 1000;   // hard floor: 30 min
+const MIN_COOLDOWN_MS = 30 * 60 * 1000;
 
-// ─── Shuffle helper ───────────────────────────────────────────────────────────
+// Invite patterns that are always allowed in ads
+const INVITE_RE     = /discord\.gg\/[a-zA-Z0-9-]+|discord\.com\/invite\/[a-zA-Z0-9-]+/gi;
+// Any URL in the message
+const ANY_URL_RE    = /https?:\/\/[^\s<>"]+|www\.[^\s<>"]+/gi;
+// Ping patterns to strip before sending
+const PING_RE       = /@everyone|@here|<@&\d+>/g;
+// Require at least one discord.gg link in the ad
+const NEEDS_INVITE  = /discord\.gg\/[a-zA-Z0-9-]+|discord\.com\/invite\/[a-zA-Z0-9-]+/i;
+
+// ─── Shuffle ──────────────────────────────────────────────────────────────────
 
 function shuffle(arr) {
   const a = [...arr];
@@ -56,15 +61,91 @@ function shuffle(arr) {
   return a;
 }
 
-// ─── Ping tier resolver ───────────────────────────────────────────────────────
+// ─── Log to guild ─────────────────────────────────────────────────────────────
+
+async function logToGuild(guild, cfg, message) {
+  try {
+    if (!cfg?.logChannelId) return;
+    const ch = guild.channels.cache.get(cfg.logChannelId);
+    if (ch?.isTextBased()) await ch.send(message);
+  } catch { /* swallow */ }
+}
+
+// ─── Ad caching ───────────────────────────────────────────────────────────────
+// Takes the most recent message in ad_channel that contains a discord.gg link.
+// Strips all pings from the content before returning.
+
+async function fetchAndCacheAd(guild, cfg) {
+  const ch = guild.channels.cache.get(cfg.adChannelId);
+  if (!ch?.isTextBased()) return null;
+
+  let messages;
+  try {
+    messages = await ch.messages.fetch({ limit: 50 });
+  } catch {
+    return null;
+  }
+
+  // Find most recent message with a discord.gg invite
+  const adMsg = [...messages.values()].find(m =>
+    m.content?.trim().length > 0 && NEEDS_INVITE.test(m.content)
+  );
+
+  if (!adMsg) return null;
+
+  // Strip all @pings before caching
+  const stripped = adMsg.content.replace(PING_RE, '').replace(/\s{2,}/g, ' ').trim();
+  return stripped || null;
+}
+
+// ─── Ad validation ────────────────────────────────────────────────────────────
+// Returns null if valid, or an internal reason string if invalid.
+// Reasons are logged to the owner; generic message shown to guild.
+
+function validateAd(adContent) {
+  if (!adContent || adContent.length < 10) return 'ad_too_short';
+
+  // Must still contain an invite link after ping stripping
+  if (!NEEDS_INVITE.test(adContent)) return 'no_invite_link';
+
+  // Find all URLs in the ad
+  const allUrls     = adContent.match(ANY_URL_RE) ?? [];
+  const inviteUrls  = adContent.match(INVITE_RE)  ?? [];
+
+  // Any URL that isn't a discord invite is suspicious unless whitelisted
+  const whitelisted = getWhitelistedDomains();
+
+  for (const url of allUrls) {
+    // Already an invite link → fine
+    if (inviteUrls.some(inv => url.includes(inv.replace(/https?:\/\//i, '')))) continue;
+
+    // Check against whitelist
+    const hostname = url.replace(/^https?:\/\//i, '').split('/')[0].toLowerCase();
+    const allowed  =
+      hostname.includes('discord.gg') ||
+      hostname.includes('discord.com') ||
+      hostname.includes('discordapp.com') ||
+      whitelisted.some(d => hostname === d || hostname.endsWith('.' + d));
+
+    if (!allowed) return `non_whitelisted_link:${hostname}`;
+  }
+
+  return null; // valid
+}
+
+// ─── Ping resolver ────────────────────────────────────────────────────────────
+// Tiers: basic (no ping) | here | partnerhere | member
 
 async function resolvePing(targetGuild, targetCfg) {
   const mc = targetGuild.memberCount;
 
+  // Nano (<100) — basic, no ping
   if (mc < 100) return '';
 
+  // Small (100–499) — @here
   if (mc < 500) return '@here';
 
+  // Medium (500–999) — @here + partner ping role (if configured and ≥10%)
   if (mc < 1000) {
     const role = targetGuild.roles.cache.get(targetCfg.partnerPingRoleId);
     if (role) {
@@ -74,28 +155,19 @@ async function resolvePing(targetGuild, targetCfg) {
     return '@here';
   }
 
-  // Large (1000+) — use member role if it covers ≥90%
+  // Large (1000+) — member role if ≥90%, else @here
   const role = targetGuild.roles.cache.get(targetCfg.memberRoleId);
   if (role) {
     const pct = role.members.size / mc;
     if (pct >= 0.90) return `<@&${role.id}>`;
 
+    // Log the warning but don't expose details to other servers
     await logToGuild(targetGuild, targetCfg,
-      `⚠️ **Auto-Wave ping warning:** \`member_role\` (<@&${role.id}>) only covers ` +
-      `**${Math.round(pct * 100)}%** of members (needs ≥ 90%). Falling back to \`@here\`.`
+      `⚠️ **Auto-Wave ping warning:** member_role only covers ${Math.round(pct * 100)}% of members ` +
+      `(needs ≥90%). Falling back to @here.`
     );
   }
   return '@here';
-}
-
-// ─── Log to guild ─────────────────────────────────────────────────────────────
-
-async function logToGuild(guild, cfg, message) {
-  try {
-    if (!cfg.logChannelId) return;
-    const ch = guild.channels.cache.get(cfg.logChannelId);
-    if (ch?.isTextBased()) await ch.send(message);
-  } catch { /* swallow */ }
 }
 
 // ─── Add Oblivion button ──────────────────────────────────────────────────────
@@ -113,78 +185,103 @@ function buildAddBotRow(clientId) {
   );
 }
 
+// ─── Runtime validation ───────────────────────────────────────────────────────
+// Returns null if ok, or an internal failure code.
+// Intentionally vague in guild-facing messages.
+
+function validateGuild(guildId, guild, cfg) {
+  if (!cfg.partnerChannelId) return 'no_partner_channel';
+  if (!cfg.adChannelId)      return 'no_ad_channel';
+  if (!guild.channels.cache.get(cfg.partnerChannelId)?.isTextBased()) return 'partner_channel_inaccessible';
+  if (!guild.channels.cache.get(cfg.adChannelId)?.isTextBased())      return 'ad_channel_inaccessible';
+  if (isBlacklisted(guildId))  return 'blacklisted';
+  return null;
+}
+
 // ─── Main tick ────────────────────────────────────────────────────────────────
 
 async function tick(client) {
   try {
-    // 1. Collect all guilds with a full config ─────────────────────────────────
+    // 1. Collect all guilds passing runtime validation ─────────────────────────
     const configured = [];
+
     for (const [guildId, guild] of client.guilds.cache) {
-      const cfg = setupStore.get(guildId);
-      if (cfg.partnerChannelId && cfg.adChannelId) {
-        configured.push({ guild, cfg, guildId });
+      const cfg    = setupStore.get(guildId);
+      const reason = validateGuild(guildId, guild, cfg);
+
+      if (reason) {
+        // Only log actionable failures (not blacklist, that's intentional)
+        if (reason !== 'blacklisted' && reason !== 'no_partner_channel' && reason !== 'no_ad_channel') {
+          await logToGuild(guild, cfg,
+            `⚠️ **Auto-Wave:** This server was skipped this tick because a validation check failed. ` +
+            `Please review your /config setup settings.`
+          );
+        }
+        continue;
       }
+
+      configured.push({ guild, cfg, guildId });
     }
 
-    if (configured.length < 2) return; // need at least 2
+    if (configured.length < 2) return;
 
     const activeIds = configured.map(e => e.guildId);
 
-    // 2. Pick source from shuffled queue ───────────────────────────────────────
+    // 2. Pick source from shuffled queue ──────────────────────────────────────
     const sourceId    = nextSource(activeIds);
     const sourceEntry = configured.find(e => e.guildId === sourceId);
-
-    if (!sourceEntry) return; // shouldn't happen but guard
+    if (!sourceEntry) return;
 
     const { guild: sourceGuild, cfg: sourceCfg } = sourceEntry;
 
-    // 3. Fetch the latest ad from source ───────────────────────────────────────
-    const adChannel = sourceGuild.channels.cache.get(sourceCfg.adChannelId);
-    if (!adChannel?.isTextBased()) return;
+    // 3. Cache the ad ─────────────────────────────────────────────────────────
+    const rawAd = await fetchAndCacheAd(sourceGuild, sourceCfg);
 
-    let adContent;
-    try {
-      const messages = await adChannel.messages.fetch({ limit: 5 });
-      const adMsg    = messages.find(m => m.content?.trim().length > 0);
-      if (!adMsg) {
-        await logToGuild(sourceGuild, sourceCfg,
-          `⚠️ **Auto-Wave:** No ad found in <#${sourceCfg.adChannelId}>. Skipping this tick.`
-        );
-        return;
-      }
-      adContent = adMsg.content;
-    } catch {
+    if (!rawAd) {
+      await logToGuild(sourceGuild, sourceCfg,
+        `⚠️ **Auto-Wave:** No valid ad found in <#${sourceCfg.adChannelId}>. ` +
+        `Make sure your most recent message contains a \`discord.gg\` invite link.`
+      );
       return;
     }
 
-    // 4. Find a target — shuffled, with 2-day pair cooldown check ──────────────
-    const now      = Date.now();
-    const targets  = shuffle(configured.filter(e => e.guildId !== sourceId));
+    // Validate ad content (links, length)
+    const adReason = validateAd(rawAd);
+    if (adReason) {
+      await logToGuild(sourceGuild, sourceCfg,
+        `⚠️ **Auto-Wave:** Your ad was skipped this tick because it failed a content validation check. ` +
+        `Check that it only contains server invite links. Non-invite links must be whitelisted.`
+      );
+      logError('AutoWave/AdValidation', new Error(adReason), sourceId);
+      return;
+    }
+
+    // 4. Find a valid target ───────────────────────────────────────────────────
+    const now     = Date.now();
+    const targets = shuffle(configured.filter(e => e.guildId !== sourceId));
 
     for (const { guild: targetGuild, cfg: targetCfg, guildId: targetId } of targets) {
 
       // a. Member minimum
       if (targetGuild.memberCount < MIN_MEMBERS) continue;
 
-      // b. Per-server cooldown (configured delay, min 30 min)
+      // b. Per-server cooldown
       const delayMs  = Math.max((targetCfg.partnerDelayHours ?? 24) * 3_600_000, MIN_COOLDOWN_MS);
       const lastRecv = autoWaveStore.getLastReceived(targetId);
       if (now - lastRecv < delayMs) continue;
 
-      // c. 2-day pair cooldown — skip if these two already partnered recently
+      // c. 3-day pair cooldown
       if (pairedRecently(sourceId, targetId)) {
-        console.log(`[AutoWave] ⏭  Skipping ${sourceGuild.name} → ${targetGuild.name} (partnered within last 2 days)`);
+        console.log(`[AutoWave] ⏭  ${sourceGuild.name} → ${targetGuild.name}: pair cooldown active`);
         continue;
       }
 
-      // 5. Resolve ping ──────────────────────────────────────────────────────────
-      const ping = await resolvePing(targetGuild, targetCfg);
+      // 5. Resolve ping and send ─────────────────────────────────────────────
+      const ping        = await resolvePing(targetGuild, targetCfg);
+      const finalContent = ping ? `${rawAd}\n\n${ping}` : rawAd;
 
-      // 6. Send ad ──────────────────────────────────────────────────────────────
       const partnerChannel = targetGuild.channels.cache.get(targetCfg.partnerChannelId);
       if (!partnerChannel?.isTextBased()) continue;
-
-      const finalContent = ping ? `${adContent}\n\n${ping}` : adContent;
 
       try {
         await partnerChannel.send({
@@ -196,30 +293,29 @@ async function tick(client) {
           },
         });
 
-        // 7. Record pair + update cooldowns + log ─────────────────────────────
+        // 6. Record + log ──────────────────────────────────────────────────────
         recordPair(sourceId, targetId);
         autoWaveStore.setLastReceived(targetId);
 
-        const successMsg =
-          `✅ **Auto-Wave sent:** Ad from **${sourceGuild.name}** → <#${targetCfg.partnerChannelId}> ` +
-          `(${targetGuild.name}) | Ping: \`${ping || 'none'}\``;
-
-        await logToGuild(sourceGuild, sourceCfg, successMsg);
+        await logToGuild(sourceGuild, sourceCfg,
+          `✅ **Auto-Wave sent:** Your ad was posted in **${targetGuild.name}** ` +
+          `(<#${targetCfg.partnerChannelId}>) | Ping: \`${ping || 'none'}\``
+        );
         await logToGuild(targetGuild, targetCfg,
-          `📨 **Auto-Wave received:** Ad from **${sourceGuild.name}** posted in <#${targetCfg.partnerChannelId}>.`
+          `📨 **Auto-Wave received:** Ad from **${sourceGuild.name}** was posted in <#${targetCfg.partnerChannelId}>.`
         );
 
         console.log(`[AutoWave] ✅ ${sourceGuild.name} → ${targetGuild.name} (ping: ${ping || 'none'})`);
       } catch (err) {
-        await logToGuild(sourceGuild, sourceCfg,
-          `❌ **Auto-Wave failed:** Could not send to **${targetGuild.name}**: ${err.message}`
+        await logToGuild(targetGuild, targetCfg,
+          `⚠️ **Auto-Wave:** An ad was scheduled for your server but could not be delivered. ` +
+          `Please check that Oblivion has permission to send messages in <#${targetCfg.partnerChannelId}>.`
         );
-        logError('AutoWave', err, targetGuild.id);
-        console.error(`[AutoWave] ❌ Failed to send to ${targetGuild.name}:`, err.message);
+        logError('AutoWave/Send', err, targetId);
+        console.error(`[AutoWave] ❌ Failed → ${targetGuild.name}:`, err.message);
       }
 
-      // Only one pair per tick
-      break;
+      break; // one pair per tick
     }
 
   } catch (err) {

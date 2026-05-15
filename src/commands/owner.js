@@ -17,6 +17,10 @@ const {
 const { checkOwner }                     = require('../utils/ownerGuard');
 const setupStore                         = require('../utils/setupStore');
 const { getRecentErrors, getErrorCount } = require('../utils/errorStore');
+const {
+  blacklistGuild, unblacklistGuild, getAllBlacklisted,
+  addWhitelistedDomain, removeWhitelistedDomain, getWhitelistedDomains,
+} = require('../utils/blacklistStore');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -63,6 +67,33 @@ module.exports = {
             .setMaxValue(20)
             .setRequired(false)
         )
+    )
+
+    // blacklist-add
+    .addSubcommand(sub =>
+      sub.setName('blacklist-add')
+        .setDescription('Ban a guild from the Auto-Wave network')
+        .addStringOption(opt =>
+          opt.setName('guild_id').setDescription('Guild ID to blacklist').setRequired(true)
+        )
+        .addStringOption(opt =>
+          opt.setName('reason').setDescription('Reason for blacklisting').setRequired(true)
+        )
+    )
+
+    // blacklist-remove
+    .addSubcommand(sub =>
+      sub.setName('blacklist-remove')
+        .setDescription('Remove a guild from the blacklist')
+        .addStringOption(opt =>
+          opt.setName('guild_id').setDescription('Guild ID to unblacklist').setRequired(true)
+        )
+    )
+
+    // blacklist-list
+    .addSubcommand(sub =>
+      sub.setName('blacklist-list')
+        .setDescription('Show all blacklisted guilds and whitelisted link domains')
     ),
 
   async execute(interaction) {
@@ -210,5 +241,57 @@ module.exports = {
 
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }
+
+    // /owner blacklist-add
+    if (sub === 'blacklist-add') {
+      const guildId = interaction.options.getString('guild_id');
+      const reason  = interaction.options.getString('reason');
+      blacklistGuild(guildId, reason);
+      const name = client.guilds.cache.get(guildId)?.name ?? `\`${guildId}\``;
+      return interaction.reply({
+        content: `🚫 **${name}** has been blacklisted from Auto-Wave.\n> Reason: ${reason}`,
+        ephemeral: true,
+      });
+    }
+
+    // /owner blacklist-remove
+    if (sub === 'blacklist-remove') {
+      const guildId = interaction.options.getString('guild_id');
+      unblacklistGuild(guildId);
+      const name = client.guilds.cache.get(guildId)?.name ?? `\`${guildId}\``;
+      return interaction.reply({
+        content: `✅ **${name}** has been removed from the blacklist.`,
+        ephemeral: true,
+      });
+    }
+
+    // /owner blacklist-list
+    if (sub === 'blacklist-list') {
+      const banned   = getAllBlacklisted();
+      const domains  = getWhitelistedDomains();
+
+      const bannedLines = banned.length
+        ? banned.map(b => {
+            const name = client.guilds.cache.get(b.guild_id)?.name ?? b.guild_id;
+            return `🚫 **${name}** \`${b.guild_id}\` — ${b.reason}`;
+          }).join('\n')
+        : '*None*';
+
+      const domainLines = domains.length
+        ? domains.map(d => `✅ \`${d}\``).join('\n')
+        : '*None (only discord.gg links are allowed by default)*';
+
+      const embed = new EmbedBuilder()
+        .setColor(0xED4245)
+        .setTitle('🚫 Blacklist & Whitelist')
+        .addFields(
+          { name: `Blacklisted Guilds (${banned.length})`,   value: bannedLines.slice(0, 1000),  inline: false },
+          { name: `Whitelisted Link Domains (${domains.length})`, value: domainLines.slice(0, 1000), inline: false },
+        )
+        .setTimestamp();
+
+      return interaction.reply({ embeds: [embed], ephemeral: true });
+    }
   },
 };
+

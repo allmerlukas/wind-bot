@@ -128,8 +128,21 @@ db.exec(`
 
   -- Persistent shuffled queue for source guild rotation
   CREATE TABLE IF NOT EXISTS wave_queue (
-    id    INTEGER PRIMARY KEY DEFAULT 1,  -- single row
-    queue TEXT NOT NULL DEFAULT '[]'      -- JSON array of guild IDs
+    id    INTEGER PRIMARY KEY DEFAULT 1,
+    queue TEXT NOT NULL DEFAULT '[]'
+  );
+
+  -- Guilds permanently banned from the Auto-Wave network
+  CREATE TABLE IF NOT EXISTS blacklisted_guilds (
+    guild_id       TEXT PRIMARY KEY,
+    reason         TEXT NOT NULL,
+    blacklisted_at INTEGER NOT NULL
+  );
+
+  -- Extra domains allowed in ads beyond discord.gg invite links
+  CREATE TABLE IF NOT EXISTS link_whitelist (
+    domain    TEXT PRIMARY KEY,   -- e.g. 'twitch.tv', 'youtube.com'
+    added_at  INTEGER NOT NULL
   );
 `);
 
