@@ -65,14 +65,14 @@ const STEPS = [
   {
     id:          'cfg_ping_role',
     label:       '🔔 Partner Ping Role',
-    description: 'Select the role pinged when a partner ad arrives (must cover **≤ 10%** of members — an opt-in role).',
+    description: 'Select the role pinged when a partner ad arrives (must cover **≥ 10%** of members — enough people to be worth pinging).',
     type:        'role',
     storeKey:    'partnerPingRoleId',
     checkFn:     async (role, guild) => {
       await guild.members.fetch();
       const pct = role.members.size / guild.memberCount;
-      if (pct > 0.10)
-        return `⚠️ **${role.name}** covers **${Math.round(pct * 100)}%** of members — must be ≤ 10%. Use a smaller opt-in role.`;
+      if (pct < 0.10)
+        return `⚠️ **${role.name}** only covers **${Math.round(pct * 100)}%** of members — needs ≥ 10%. Use a bigger role so the ping reaches enough people.`;
       return null;
     },
   },
@@ -234,10 +234,22 @@ module.exports = {
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
-    // ── /config setup — start wizard at step 0 ────────────────────────────────
+
+    // ── /config setup — resume from first unconfigured step ───────────────────
     if (sub === 'setup') {
+      const cfg = setupStore.get(interaction.guildId);
+
+      // Find the first step that has no value yet
+      let startStep = STEPS.findIndex(s => {
+        const val = cfg[s.storeKey];
+        return val === null || val === undefined;
+      });
+
+      // Everything already filled — restart from 0 so user can change anything
+      if (startStep === -1) startStep = 0;
+
       return interaction.reply({
-        ...buildStepMessage(interaction.guildId, 0),
+        ...buildStepMessage(interaction.guildId, startStep),
         ephemeral: true,
       });
     }
