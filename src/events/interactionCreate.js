@@ -158,6 +158,12 @@ module.exports = {
         await interaction.deferUpdate();
         await executeCopy(interaction, wave);
       }
+
+      // ── Partner wave: pick which server gets double ───────────────────────
+      if (interaction.customId.startsWith('pm_wave_double_select:')) {
+        return partnerCmd.handleSelect(interaction);
+      }
+
       return;
     }
 
@@ -200,8 +206,8 @@ module.exports = {
         });
       }
 
-      // ── Partner manager: confirm / re-roll ─────────────────────────────────
-      if (interaction.customId.startsWith('pm_confirm:') || interaction.customId.startsWith('pm_reroll:')) {
+      // ── Partner manager: all pm_ buttons ─────────────────────────────────
+      if (interaction.customId.startsWith('pm_')) {
         return partnerCmd.handleButton(interaction);
       }
 

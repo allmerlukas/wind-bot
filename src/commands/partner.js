@@ -2,20 +2,13 @@
  * /partner — Personal partner manager
  *
  * Subcommands:
- *   /partner setup  guild_id channel_id [label]  — Register your first guild
- *   /partner add    guild_id channel_id [label]  — Add another guild
- *   /partner remove guild_id                     — Remove a guild
- *   /partner list                                — List all your guilds
- *   /partner random                              — Pick 2 random eligible guilds to partner
- *
- * How /partner random works:
- *   1. Load all guilds the user has registered.
- *   2. Shuffle them randomly.
- *   3. Find the first pair where neither guild has been partnered with the other
- *      by this user in the last 2 days.
- *   4. Send an ephemeral message with jump links to both partner channels
- *      + a "✅ Mark as Partnered" button.
- *   5. When the user clicks the button, record the pair in pm_pairs.
+ *   /partner setup  — Register first guild
+ *   /partner add    — Add another guild
+ *   /partner remove — Remove a guild
+ *   /partner list   — List all guilds
+ *   /partner random — Pick 2 random eligible guilds
+ *   /partner wave   — Pair ALL guilds together in one session
+ *                     If odd count → pick which server gets 2 partners
  */
 
 const {
@@ -23,12 +16,30 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  StringSelectMenuBuilder,
+  StringSelectMenuOptionBuilder,
   EmbedBuilder,
 } = require('discord.js');
 
 const pmStore = require('../utils/pmStore');
 
-// ─── Shuffle helper ───────────────────────────────────────────────────────────
+// ─── In-memory wave sessions ──────────────────────────────────────────────────
+// Keyed by userId; stores finalized pairs and the leftover guild (if odd count)
+// TTL: 15 minutes
+
+const waveSessions = new Map();
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, s] of waveSessions) {
+    if (s.expiresAt < now) waveSessions.delete(id);
+  }
+}, 5 * 60 * 1000);
+
+function setWaveSession(userId, data) {
+  waveSessions.set(userId, { ...data, expiresAt: Date.now() + 15 * 60 * 1000 });
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function shuffle(arr) {
   const a = [...arr];
@@ -39,10 +50,50 @@ function shuffle(arr) {
   return a;
 }
 
-// ─── Find first eligible pair from a shuffled list ───────────────────────────
+function guildName(g) {
+  return g.label || `Guild \`${g.guild_id}\``;
+}
+
+function jumpLink(g) {
+  return `https://discord.com/channels/${g.guild_id}/${g.channel_id}`;
+}
+
+// ─── Build wave summary embed ─────────────────────────────────────────────────
+
+function buildWaveEmbed(pairs, guildsMap, extra = null, doubleGuild = null) {
+  const lines = pairs.map((pair, i) => {
+    const a  = guildsMap[pair[0]];
+    const b  = guildsMap[pair[1]];
+    const nameA = guildName(a);
+    const nameB = guildName(b);
+    return `**${i + 1}.** [${nameA}](${jumpLink(a)}) ↔ [${nameB}](${jumpLink(b)})`;
+  });
+
+  const embed = new EmbedBuilder()
+    .setColor(0x7c5cfc)
+    .setTitle(`🌊 Wave Session — ${Object.keys(guildsMap).length} servers, ${pairs.length} pair(s)`)
+    .setDescription(lines.join('\n') || '*No pairs yet.*')
+    .setTimestamp();
+
+  if (extra) {
+    const extraG = guildsMap[extra];
+    embed.addFields({
+      name: '⚠️ Leftover Server',
+      value: `**${guildName(extraG)}** has no partner yet — choose which server gets the extra partnership.`,
+    });
+  }
+
+  if (doubleGuild) {
+    const dg = guildsMap[doubleGuild];
+    embed.setFooter({ text: `${guildName(dg)} will handle 2 partnerships this wave.` });
+  }
+
+  return embed;
+}
+
+// ─── Find eligible pair for /partner random ───────────────────────────────────
 
 function findEligiblePair(userId, guilds) {
-  // Try every combination in shuffled order
   const shuffled = shuffle(guilds);
   for (let i = 0; i < shuffled.length; i++) {
     for (let j = i + 1; j < shuffled.length; j++) {
@@ -53,36 +104,31 @@ function findEligiblePair(userId, guilds) {
       }
     }
   }
-  return null; // all pairs on cooldown
+  return null;
 }
 
-// ─── Build the match embed ────────────────────────────────────────────────────
+// ─── Build random match embed ─────────────────────────────────────────────────
 
 function buildMatchEmbed(g1, g2) {
-  const jumpA = `https://discord.com/channels/${g1.guild_id}/${g1.channel_id}`;
-  const jumpB = `https://discord.com/channels/${g2.guild_id}/${g2.channel_id}`;
-
   return new EmbedBuilder()
     .setColor(0x7c5cfc)
     .setTitle('🎲 Partner Match')
     .setDescription('Post in both partner channels, then click **✅ Mark as Partnered** to record it.')
     .addFields(
       {
-        name: `🏠 ${g1.label || `Guild \`${g1.guild_id}\``}`,
-        value: `📢 Partner channel: [Jump →](${jumpA})\n\`${g1.channel_id}\``,
+        name: `🏠 ${guildName(g1)}`,
+        value: `📢 Partner channel: [Jump →](${jumpLink(g1)})\n\`${g1.channel_id}\``,
         inline: true,
       },
       {
-        name: `🏠 ${g2.label || `Guild \`${g2.guild_id}\``}`,
-        value: `📢 Partner channel: [Jump →](${jumpB})\n\`${g2.channel_id}\``,
+        name: `🏠 ${guildName(g2)}`,
+        value: `📢 Partner channel: [Jump →](${jumpLink(g2)})\n\`${g2.channel_id}\``,
         inline: true,
       },
     )
     .setFooter({ text: 'These two guilds have not been partnered in the last 2 days.' })
     .setTimestamp();
 }
-
-// ─── Build confirm button ─────────────────────────────────────────────────────
 
 function buildConfirmRow(userId, guildAId, guildBId) {
   return new ActionRowBuilder().addComponents(
@@ -97,78 +143,48 @@ function buildConfirmRow(userId, guildAId, guildBId) {
   );
 }
 
-// ─── Command ─────────────────────────────────────────────────────────────────
+// ─── Command definition ───────────────────────────────────────────────────────
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('partner')
     .setDescription('Personal partner manager — track and randomise your server partnerships')
 
-    // setup
     .addSubcommand(sub =>
       sub.setName('setup')
         .setDescription('Register the first guild you manage partnerships for')
-        .addStringOption(opt =>
-          opt.setName('guild_id')
-            .setDescription('Guild ID of the server')
-            .setRequired(true)
-        )
-        .addStringOption(opt =>
-          opt.setName('channel_id')
-            .setDescription('ID of the partner channel in that server')
-            .setRequired(true)
-        )
-        .addStringOption(opt =>
-          opt.setName('label')
-            .setDescription('Optional nickname (e.g. "My Main Server")')
-            .setRequired(false)
-            .setMaxLength(40)
-        )
+        .addStringOption(opt => opt.setName('guild_id').setDescription('Guild ID').setRequired(true))
+        .addStringOption(opt => opt.setName('channel_id').setDescription('Partner channel ID').setRequired(true))
+        .addStringOption(opt => opt.setName('label').setDescription('Nickname (optional)').setRequired(false).setMaxLength(40))
     )
 
-    // add
     .addSubcommand(sub =>
       sub.setName('add')
-        .setDescription('Add another guild to your partner manager list')
-        .addStringOption(opt =>
-          opt.setName('guild_id')
-            .setDescription('Guild ID of the server')
-            .setRequired(true)
-        )
-        .addStringOption(opt =>
-          opt.setName('channel_id')
-            .setDescription('ID of the partner channel in that server')
-            .setRequired(true)
-        )
-        .addStringOption(opt =>
-          opt.setName('label')
-            .setDescription('Optional nickname (e.g. "Partner Server #2")')
-            .setRequired(false)
-            .setMaxLength(40)
-        )
+        .setDescription('Add another guild to your list')
+        .addStringOption(opt => opt.setName('guild_id').setDescription('Guild ID').setRequired(true))
+        .addStringOption(opt => opt.setName('channel_id').setDescription('Partner channel ID').setRequired(true))
+        .addStringOption(opt => opt.setName('label').setDescription('Nickname (optional)').setRequired(false).setMaxLength(40))
     )
 
-    // remove
     .addSubcommand(sub =>
       sub.setName('remove')
-        .setDescription('Remove a guild from your partner manager list')
-        .addStringOption(opt =>
-          opt.setName('guild_id')
-            .setDescription('Guild ID to remove')
-            .setRequired(true)
-        )
+        .setDescription('Remove a guild from your list')
+        .addStringOption(opt => opt.setName('guild_id').setDescription('Guild ID to remove').setRequired(true))
     )
 
-    // list
     .addSubcommand(sub =>
       sub.setName('list')
         .setDescription('Show all guilds in your partner manager list')
     )
 
-    // random
     .addSubcommand(sub =>
       sub.setName('random')
         .setDescription('Pick 2 random guilds that haven\'t partnered in 2 days')
+    )
+
+    .addSubcommand(sub =>
+      sub.setName('wave')
+        .setDescription('Pair ALL your guilds together in one big session')
     ),
 
   // ─── Execute ─────────────────────────────────────────────────────────────────
@@ -177,150 +193,180 @@ module.exports = {
     const sub    = interaction.options.getSubcommand();
     const userId = interaction.user.id;
 
-    // ── /partner setup ─────────────────────────────────────────────────────────
-    // Same logic as add — just a friendlier entry point
+    // ── /partner setup & add ──────────────────────────────────────────────────
     if (sub === 'setup' || sub === 'add') {
       const guildId   = interaction.options.getString('guild_id');
       const channelId = interaction.options.getString('channel_id');
       const label     = interaction.options.getString('label') ?? null;
 
-      // Basic ID validation (Discord IDs are 17-19 digit numbers)
-      if (!/^\d{17,19}$/.test(guildId)) {
-        return interaction.reply({ content: '❌ Invalid guild ID. Should be a 17-19 digit number.', ephemeral: true });
-      }
-      if (!/^\d{17,19}$/.test(channelId)) {
-        return interaction.reply({ content: '❌ Invalid channel ID. Should be a 17-19 digit number.', ephemeral: true });
-      }
+      if (!/^\d{17,19}$/.test(guildId))   return interaction.reply({ content: '❌ Invalid guild ID.', ephemeral: true });
+      if (!/^\d{17,19}$/.test(channelId)) return interaction.reply({ content: '❌ Invalid channel ID.', ephemeral: true });
 
-      const isUpdate = pmStore.hasGuild(userId, guildId);
+      const isUpdate    = pmStore.hasGuild(userId, guildId);
       pmStore.addGuild(userId, guildId, channelId, label);
-
       const displayName = label ?? `Guild \`${guildId}\``;
       const total       = pmStore.getGuilds(userId).length;
 
       return interaction.reply({
         content: [
-          isUpdate
-            ? `✅ Updated **${displayName}** in your partner list.`
-            : `✅ Added **${displayName}** to your partner list.`,
+          isUpdate ? `✅ Updated **${displayName}**.` : `✅ Added **${displayName}** to your list.`,
           `📢 Partner channel: \`${channelId}\``,
           `📋 You now have **${total}** guild(s) registered.`,
-          total < 2 ? `\n💡 Add at least one more guild to use \`/partner random\`.` : '',
+          total < 2 ? `\n💡 Add at least one more guild to use \`/partner random\` or \`/partner wave\`.` : '',
         ].join('\n'),
         ephemeral: true,
       });
     }
 
-    // ── /partner remove ────────────────────────────────────────────────────────
+    // ── /partner remove ───────────────────────────────────────────────────────
     if (sub === 'remove') {
       const guildId = interaction.options.getString('guild_id');
       if (!pmStore.removeGuild(userId, guildId)) {
         return interaction.reply({ content: `❌ Guild \`${guildId}\` is not in your list.`, ephemeral: true });
       }
-      return interaction.reply({
-        content: `🗑️ Removed guild \`${guildId}\` from your partner manager.`,
-        ephemeral: true,
-      });
+      return interaction.reply({ content: `🗑️ Removed guild \`${guildId}\`.`, ephemeral: true });
     }
 
-    // ── /partner list ──────────────────────────────────────────────────────────
+    // ── /partner list ─────────────────────────────────────────────────────────
     if (sub === 'list') {
       const guilds = pmStore.getGuilds(userId);
-
       if (guilds.length === 0) {
-        return interaction.reply({
-          content: '📭 No guilds registered yet. Use `/partner setup` to add your first one.',
-          ephemeral: true,
-        });
+        return interaction.reply({ content: '📭 No guilds registered. Use `/partner setup` to add your first one.', ephemeral: true });
       }
-
-      const lines = guilds.map((g, i) => {
-        const name    = g.label ? `**${g.label}**` : `Guild \`${g.guild_id}\``;
-        const channel = `<#${g.channel_id}>`;
-        return `**${i + 1}.** ${name} — ${channel} (\`${g.guild_id}\`)`;
-      });
-
+      const lines = guilds.map((g, i) =>
+        `**${i + 1}.** ${g.label ? `**${g.label}**` : `Guild \`${g.guild_id}\``} — <#${g.channel_id}> (\`${g.guild_id}\`)`
+      );
       return interaction.reply({
         embeds: [
           new EmbedBuilder()
             .setColor(0x7c5cfc)
             .setTitle(`🤝 Your Partner Guilds (${guilds.length})`)
             .setDescription(lines.join('\n'))
-            .setFooter({ text: 'Use /partner random to get a match' }),
+            .setFooter({ text: 'Use /partner wave to pair them all at once' }),
         ],
         ephemeral: true,
       });
     }
 
-    // ── /partner random ────────────────────────────────────────────────────────
+    // ── /partner random ───────────────────────────────────────────────────────
     if (sub === 'random') {
       const guilds = pmStore.getGuilds(userId);
-
       if (guilds.length < 2) {
-        return interaction.reply({
-          content: `❌ You need at least **2 guilds** registered. You have **${guilds.length}**.\nUse \`/partner add\` to add more.`,
-          ephemeral: true,
-        });
+        return interaction.reply({ content: `❌ Need at least **2 guilds**. You have **${guilds.length}**.\nUse \`/partner add\` to register more.`, ephemeral: true });
       }
-
       const pair = findEligiblePair(userId, guilds);
-
       if (!pair) {
         return interaction.reply({
-          content: [
-            '⏳ **All pairs are on cooldown!**',
-            `Every combination of your **${guilds.length}** guilds was partnered within the last 2 days.`,
-            'Try again later or add more guilds with `/partner add`.',
-          ].join('\n'),
+          content: `⏳ **All pairs are on cooldown!** Every combination of your ${guilds.length} guilds was partnered in the last 2 days.\nTry again later or add more guilds.`,
           ephemeral: true,
         });
       }
-
       const [g1, g2] = pair;
-
       return interaction.reply({
         embeds: [buildMatchEmbed(g1, g2)],
         components: [buildConfirmRow(userId, g1.guild_id, g2.guild_id)],
         ephemeral: true,
       });
     }
+
+    // ── /partner wave ─────────────────────────────────────────────────────────
+    if (sub === 'wave') {
+      const guilds = pmStore.getGuilds(userId);
+
+      if (guilds.length < 2) {
+        return interaction.reply({ content: `❌ Need at least **2 guilds** to run a wave. You have **${guilds.length}**.`, ephemeral: true });
+      }
+
+      // Shuffle and pair up sequentially
+      const shuffled = shuffle(guilds);
+      const pairs    = [];
+      for (let i = 0; i + 1 < shuffled.length; i += 2) {
+        pairs.push([shuffled[i].guild_id, shuffled[i + 1].guild_id]);
+      }
+
+      const isOdd  = shuffled.length % 2 !== 0;
+      const extra  = isOdd ? shuffled[shuffled.length - 1] : null;
+
+      // Build a lookup map for the embed builder
+      const guildsMap = Object.fromEntries(guilds.map(g => [g.guild_id, g]));
+
+      // Store session
+      setWaveSession(userId, { pairs, extra: extra?.guild_id ?? null, guildsMap });
+
+      if (!isOdd) {
+        // Even count — show all pairs + confirm button
+        return interaction.reply({
+          embeds: [buildWaveEmbed(pairs, guildsMap)],
+          components: [
+            new ActionRowBuilder().addComponents(
+              new ButtonBuilder()
+                .setCustomId(`pm_wave_confirm:${userId}`)
+                .setLabel('✅ Mark All as Partnered')
+                .setStyle(ButtonStyle.Success)
+            ),
+          ],
+          ephemeral: true,
+        });
+      }
+
+      // Odd count — ask which server gets the extra partnership
+      // Any server except the leftover can volunteer
+      const candidates = guilds.filter(g => g.guild_id !== extra.guild_id);
+
+      const select = new StringSelectMenuBuilder()
+        .setCustomId(`pm_wave_double_select:${userId}`)
+        .setPlaceholder('Choose which server gets 2 partners...')
+        .addOptions(
+          candidates.map(g =>
+            new StringSelectMenuOptionBuilder()
+              .setLabel(guildName(g).slice(0, 100))
+              .setDescription(`Will also partner with ${guildName(extra)}`.slice(0, 100))
+              .setValue(g.guild_id)
+          ).slice(0, 25) // Discord select max 25
+        );
+
+      return interaction.reply({
+        embeds: [buildWaveEmbed(pairs, guildsMap, extra.guild_id)],
+        components: [new ActionRowBuilder().addComponents(select)],
+        ephemeral: true,
+      });
+    }
   },
 
-  // ─── Button handler (called from interactionCreate) ───────────────────────
+  // ─── Button handlers ──────────────────────────────────────────────────────────
 
   async handleButton(interaction) {
-    const [action, userId, guildAId, guildBId] = interaction.customId.split(':');
+    const parts  = interaction.customId.split(':');
+    const action = parts[0];
+    const userId = parts[1];
 
-    // Only the user who ran /partner random can click
     if (interaction.user.id !== userId) {
       return interaction.reply({ content: '❌ This is not your session.', ephemeral: true });
     }
 
+    // /partner random — confirm single pair
     if (action === 'pm_confirm') {
+      const [, , guildAId, guildBId] = parts;
       pmStore.recordPair(userId, guildAId, guildBId);
-
-      const guilds  = pmStore.getGuilds(userId);
-      const g1      = guilds.find(g => g.guild_id === guildAId);
-      const g2      = guilds.find(g => g.guild_id === guildBId);
-      const nameA   = g1?.label ?? `\`${guildAId}\``;
-      const nameB   = g2?.label ?? `\`${guildBId}\``;
-
+      const guilds = pmStore.getGuilds(userId);
+      const g1 = guilds.find(g => g.guild_id === guildAId);
+      const g2 = guilds.find(g => g.guild_id === guildBId);
       return interaction.update({
         embeds: [
           new EmbedBuilder()
             .setColor(0x22c55e)
             .setTitle('✅ Partnership Recorded!')
-            .setDescription(`**${nameA}** ↔ **${nameB}** have been marked as partnered.\nThey won't be matched again for **2 days**.`)
+            .setDescription(`**${guildName(g1 ?? { guild_id: guildAId })}** ↔ **${guildName(g2 ?? { guild_id: guildBId })}** marked as partnered.\nWon't be matched again for **2 days**.`)
             .setTimestamp(),
         ],
         components: [],
       });
     }
 
+    // /partner random — re-roll
     if (action === 'pm_reroll') {
       const guilds = pmStore.getGuilds(userId);
       const pair   = findEligiblePair(userId, guilds);
-
       if (!pair) {
         return interaction.update({
           embeds: [
@@ -332,11 +378,79 @@ module.exports = {
           components: [],
         });
       }
-
       const [g1, g2] = pair;
       return interaction.update({
         embeds: [buildMatchEmbed(g1, g2)],
         components: [buildConfirmRow(userId, g1.guild_id, g2.guild_id)],
+      });
+    }
+
+    // /partner wave — confirm all pairs
+    if (action === 'pm_wave_confirm') {
+      const session = waveSessions.get(userId);
+      if (!session || session.expiresAt < Date.now()) {
+        return interaction.update({ content: '❌ Session expired. Run `/partner wave` again.', embeds: [], components: [] });
+      }
+
+      for (const [a, b] of session.pairs) {
+        pmStore.recordPair(userId, a, b);
+      }
+
+      waveSessions.delete(userId);
+
+      return interaction.update({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0x22c55e)
+            .setTitle(`✅ Wave Complete! ${session.pairs.length} pair(s) recorded.`)
+            .setDescription(
+              session.pairs.map(([a, b], i) => {
+                const gA = session.guildsMap[a];
+                const gB = session.guildsMap[b];
+                return `**${i + 1}.** ${guildName(gA ?? { guild_id: a })} ↔ ${guildName(gB ?? { guild_id: b })}`;
+              }).join('\n')
+            )
+            .setFooter({ text: 'All pairs are on 2-day cooldown.' })
+            .setTimestamp(),
+        ],
+        components: [],
+      });
+    }
+  },
+
+  // ─── Select menu handler ──────────────────────────────────────────────────────
+
+  async handleSelect(interaction) {
+    const [action, userId] = interaction.customId.split(':');
+
+    if (interaction.user.id !== userId) {
+      return interaction.reply({ content: '❌ This is not your session.', ephemeral: true });
+    }
+
+    // /partner wave — user picked which server gets double
+    if (action === 'pm_wave_double_select') {
+      const session = waveSessions.get(userId);
+      if (!session || session.expiresAt < Date.now()) {
+        return interaction.update({ content: '❌ Session expired. Run `/partner wave` again.', embeds: [], components: [] });
+      }
+
+      const doubleGuildId = interaction.values[0];
+      const extraGuildId  = session.extra;
+
+      // Add the extra pair
+      const updatedPairs = [...session.pairs, [doubleGuildId, extraGuildId]];
+      setWaveSession(userId, { ...session, pairs: updatedPairs, extra: null });
+
+      return interaction.update({
+        embeds: [buildWaveEmbed(updatedPairs, session.guildsMap, null, doubleGuildId)],
+        components: [
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId(`pm_wave_confirm:${userId}`)
+              .setLabel('✅ Mark All as Partnered')
+              .setStyle(ButtonStyle.Success)
+          ),
+        ],
       });
     }
   },
