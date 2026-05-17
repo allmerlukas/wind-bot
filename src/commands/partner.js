@@ -24,7 +24,38 @@ const {
   TextInputStyle,
 } = require('discord.js');
 
-const pmStore = require('../utils/pmStore');
+const pmStore     = require('../utils/pmStore');
+const setupStore  = require('../utils/setupStore');
+
+// ─── Ad fetcher ───────────────────────────────────────────────────────────────
+// Fetches the most recent discord.gg message from a guild's configured ad channel.
+// Returns the ad text (pings stripped), or null if not found / not configured.
+
+const INVITE_RE = /discord\.gg\/[a-zA-Z0-9-]+|discord\.com\/invite\/[a-zA-Z0-9-]+/i;
+const PING_RE   = /@(everyone|here|&\d+|\d+)/g;
+
+async function fetchAdForGuild(client, guildId) {
+  const cfg = setupStore.get(guildId);
+  if (!cfg?.adChannelId) return null;
+
+  try {
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) return null;
+
+    const ch = guild.channels.cache.get(cfg.adChannelId);
+    if (!ch?.isTextBased()) return null;
+
+    const messages = await ch.messages.fetch({ limit: 50 });
+    const adMsg    = [...messages.values()].find(m =>
+      m.content?.trim().length > 0 && INVITE_RE.test(m.content)
+    );
+    if (!adMsg) return null;
+
+    return adMsg.content.replace(PING_RE, '').replace(/\s{2,}/g, ' ').trim() || null;
+  } catch {
+    return null;
+  }
+}
 
 // ─── In-memory wave sessions ──────────────────────────────────────────────────
 // Keyed by userId; stores finalized pairs and the leftover guild (if odd count)
@@ -137,11 +168,15 @@ function buildConfirmRow(userId, guildAId, guildBId) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`pm_confirm:${userId}:${guildAId}:${guildBId}`)
-      .setLabel('✅ Mark as Partnered')
+      .setLabel('\u2705 Mark as Partnered')
       .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
+      .setCustomId(`pm_getads:${userId}:${guildAId}:${guildBId}`)
+      .setLabel('\ud83d\udccb Get Ads')
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
       .setCustomId(`pm_reroll:${userId}`)
-      .setLabel('🔄 Re-roll')
+      .setLabel('\ud83d\udd04 Re-roll')
       .setStyle(ButtonStyle.Secondary),
   );
 }
@@ -418,6 +453,49 @@ module.exports = {
         embeds: [buildMatchEmbed(g1, g2)],
         components: [buildConfirmRow(userId, g1.guild_id, g2.guild_id)],
       });
+    }
+
+    // /partner random — get ads via DM
+    if (action === 'pm_getads') {
+      const [, , guildAId, guildBId] = parts;
+      const guilds = pmStore.getGuilds(userId);
+      const g1     = guilds.find(g => g.guild_id === guildAId);
+      const g2     = guilds.find(g => g.guild_id === guildBId);
+
+      // Acknowledge immediately
+      await interaction.reply({ content: '\ud83d\udce8 Fetching ads and sending to your DMs...', ephemeral: true });
+
+      try {
+        const dmChannel = await interaction.user.createDM();
+
+        const adA = await fetchAdForGuild(interaction.client, guildAId);
+        const adB = await fetchAdForGuild(interaction.client, guildBId);
+
+        const nameA = guildName(g1 ?? { guild_id: guildAId });
+        const nameB = guildName(g2 ?? { guild_id: guildBId });
+        const jumpA = `https://discord.com/channels/${guildAId}/${g1?.channel_id}`;
+        const jumpB = `https://discord.com/channels/${guildBId}/${g2?.channel_id}`;
+
+        await dmChannel.send(
+          `\ud83e\udd1d **Partner Session — post these ads in the correct channels**\n` +
+          `After posting in both, click **\u2705 Mark as Partnered** in Discord.`
+        );
+
+        await dmChannel.send(
+          `**\ud83c\udfe0 Post this in [${nameA}'s partner channel](${jumpA}):**\n\n` +
+          (adB ? adB : `\u26a0\ufe0f No ad found for **${nameB}** — make sure they have an ad in their ad channel.`)
+        );
+
+        await dmChannel.send(
+          `**\ud83c\udfe0 Post this in [${nameB}'s partner channel](${jumpB}):**\n\n` +
+          (adA ? adA : `\u26a0\ufe0f No ad found for **${nameA}** — make sure they have an ad in their ad channel.`)
+        );
+
+        await dmChannel.send(`\u2705 Done! Jump links:\n${jumpA}\n${jumpB}`);
+      } catch (err) {
+        await interaction.followUp({ content: '\u274c Could not DM you. Make sure your DMs are open.', ephemeral: true });
+      }
+      return;
     }
 
     // /partner wave — confirm all pairs
