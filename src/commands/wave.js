@@ -329,10 +329,22 @@ module.exports = {
     // ── delete ──
     .addSubcommand(sub =>
       sub.setName('delete')
-        .setDescription('Delete a saved wave')
+        .setDescription('Delete an entire saved wave')
         .addStringOption(opt =>
           opt.setName('name').setDescription('Name of the wave to delete')
             .setRequired(true).setMaxLength(50)
+        )
+    )
+    // ── remove ──
+    .addSubcommand(sub =>
+      sub.setName('remove')
+        .setDescription('Remove one server\'s ad from a wave')
+        .addStringOption(opt =>
+          opt.setName('name').setDescription('Wave name').setRequired(true).setMaxLength(50)
+        )
+        .addIntegerOption(opt =>
+          opt.setName('server').setDescription('Which server number to remove (e.g. 3)')
+            .setRequired(true).setMinValue(1)
         )
     ),
 
@@ -594,13 +606,49 @@ module.exports = {
       });
     }
 
-    // ── /wave delete ──────────────────────────────────────────────────────────
+    // ── /wave delete ─────────────────────────────────────────────────────────────
     if (sub === 'delete') {
       const name = interaction.options.getString('name');
       if (!waveStore.deleteWave(interaction.user.id, name)) {
         return interaction.reply({ content: `❌ No wave named **${name}** found.`, ephemeral: true });
       }
       return interaction.reply({ content: `🗑️ Wave **${name}** deleted.`, ephemeral: true });
+    }
+
+    // ── /wave remove ────────────────────────────────────────────────────────────
+    if (sub === 'remove') {
+      const name      = interaction.options.getString('name');
+      const serverNum = interaction.options.getInteger('server');
+      const wave      = waveStore.getWave(interaction.user.id, name);
+
+      if (!wave) {
+        return interaction.reply({ content: `❌ No wave named **${name}** found.`, ephemeral: true });
+      }
+
+      const ads = wave.ads ?? wave.links ?? [];
+      const idx = serverNum - 1;
+
+      if (idx >= ads.length) {
+        return interaction.reply({
+          content: `❌ Server **${serverNum}** doesn't exist. This wave only has **${ads.length}** server(s).`,
+          ephemeral: true,
+        });
+      }
+
+      const removed  = ads[idx].slice(0, 80).replace(/\n/g, ' ');
+      const newAds   = [...ads.slice(0, idx), ...ads.slice(idx + 1)];
+
+      waveStore.saveWave(interaction.user.id, wave.displayName, newAds);
+
+      return interaction.reply({
+        content: [
+          `🗑️ Removed **server ${serverNum}** from wave **${name}**.`,
+          `> ${removed}${ads[idx].length > 80 ? '...' : ''}`,
+          ``,
+          `Wave now has **${newAds.length}** server(s) remaining.`,
+        ].join('\n'),
+        ephemeral: true,
+      });
     }
   },
 };
