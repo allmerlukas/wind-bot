@@ -26,35 +26,58 @@ const {
 
 const pmStore     = require('../utils/pmStore');
 const setupStore  = require('../utils/setupStore');
+const waveStore   = require('../utils/waveStore');
+const { extractInviteCodes } = require('../utils/inviteChecker');
 
 // ─── Ad fetcher ───────────────────────────────────────────────────────────────
-// Fetches the most recent discord.gg message from a guild's configured ad channel.
-// Returns the ad text (pings stripped), or null if not found / not configured.
+// Two-stage lookup for a guild's ad:
+//   1. setupStore ad channel (when bot is in the server)
+//   2. Scan the user's wave folders for an ad whose invite resolves to guildId
 
 const INVITE_RE = /discord\.gg\/[a-zA-Z0-9-]+|discord\.com\/invite\/[a-zA-Z0-9-]+/i;
 const PING_RE   = /@(everyone|here|&\d+|\d+)/g;
 
-async function fetchAdForGuild(client, guildId) {
+// Stage 1 — fetch from the guild's configured ad channel
+async function fetchAdFromChannel(client, guildId) {
   const cfg = setupStore.get(guildId);
   if (!cfg?.adChannelId) return null;
-
   try {
     const guild = client.guilds.cache.get(guildId);
     if (!guild) return null;
-
     const ch = guild.channels.cache.get(cfg.adChannelId);
     if (!ch?.isTextBased()) return null;
-
     const messages = await ch.messages.fetch({ limit: 50 });
     const adMsg    = [...messages.values()].find(m =>
       m.content?.trim().length > 0 && INVITE_RE.test(m.content)
     );
     if (!adMsg) return null;
-
     return adMsg.content.replace(PING_RE, '').replace(/\s{2,}/g, ' ').trim() || null;
-  } catch {
-    return null;
+  } catch { return null; }
+}
+
+// Stage 2 — scan user's waves for an ad whose invite resolves to guildId
+async function findAdInWaves(client, userId, guildId) {
+  const userWaves = waveStore.getUserWaves(userId);
+  const allAds    = Object.values(userWaves).flatMap(w => w.ads ?? []);
+
+  for (const ad of allAds) {
+    const codes = extractInviteCodes(ad);
+    for (const code of codes) {
+      try {
+        const invite = await client.fetchInvite(code);
+        if (invite.guild?.id === guildId) {
+          return ad.replace(PING_RE, '').replace(/\s{2,}/g, ' ').trim();
+        }
+      } catch { /* dead or inaccessible — keep scanning */ }
+    }
   }
+  return null;
+}
+
+// Combined: try ad channel first, fall back to waves
+async function fetchAdForGuild(client, userId, guildId) {
+  return (await fetchAdFromChannel(client, guildId))
+      ?? (await findAdInWaves(client, userId, guildId));
 }
 
 // ─── In-memory wave sessions ──────────────────────────────────────────────────
@@ -468,8 +491,8 @@ module.exports = {
       try {
         const dmChannel = await interaction.user.createDM();
 
-        const adA = await fetchAdForGuild(interaction.client, guildAId);
-        const adB = await fetchAdForGuild(interaction.client, guildBId);
+        const adA = await fetchAdForGuild(interaction.client, userId, guildAId);
+        const adB = await fetchAdForGuild(interaction.client, userId, guildBId);
 
         const nameA = guildName(g1 ?? { guild_id: guildAId });
         const nameB = guildName(g2 ?? { guild_id: guildBId });
@@ -482,13 +505,13 @@ module.exports = {
         );
 
         await dmChannel.send(
-          `**\ud83c\udfe0 Post this in [${nameA}'s partner channel](${jumpA}):**\n\n` +
-          (adB ? adB : `\u26a0\ufe0f No ad found for **${nameB}** — make sure they have an ad in their ad channel.`)
+          `**🏠 Post this in [${nameA}'s partner channel](${jumpA}):**\n\n` +
+          (adB ? adB : `⚠️ No ad found for **${nameB}** — add their ad to one of your \`/wave\` folders or make sure they've set up their ad channel.`)
         );
 
         await dmChannel.send(
-          `**\ud83c\udfe0 Post this in [${nameB}'s partner channel](${jumpB}):**\n\n` +
-          (adA ? adA : `\u26a0\ufe0f No ad found for **${nameA}** — make sure they have an ad in their ad channel.`)
+          `**🏠 Post this in [${nameB}'s partner channel](${jumpB}):**\n\n` +
+          (adA ? adA : `⚠️ No ad found for **${nameA}** — add their ad to one of your \`/wave\` folders or make sure they've set up their ad channel.`)
         );
 
         await dmChannel.send(`\u2705 Done! Jump links:\n${jumpA}\n${jumpB}`);
