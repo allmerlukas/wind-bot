@@ -387,15 +387,19 @@ module.exports = {
       setWaveSession(userId, { pairs, extra: extra?.guild_id ?? null, guildsMap });
 
       if (!isOdd) {
-        // Even count — show all pairs + confirm button
+        // Even count — show all pairs + confirm + get ads buttons
         return interaction.reply({
           embeds: [buildWaveEmbed(pairs, guildsMap)],
           components: [
             new ActionRowBuilder().addComponents(
               new ButtonBuilder()
                 .setCustomId(`pm_wave_confirm:${userId}`)
-                .setLabel('✅ Mark All as Partnered')
-                .setStyle(ButtonStyle.Success)
+                .setLabel('\u2705 Mark All as Partnered')
+                .setStyle(ButtonStyle.Success),
+              new ButtonBuilder()
+                .setCustomId(`pm_wave_getads:${userId}`)
+                .setLabel('\ud83d\udccb Get All Ads')
+                .setStyle(ButtonStyle.Primary)
             ),
           ],
           ephemeral: true,
@@ -552,6 +556,52 @@ module.exports = {
         components: [],
       });
     }
+
+    // /partner wave — get all ads via DM
+    if (action === 'pm_wave_getads') {
+      const session = waveSessions.get(userId);
+      if (!session || session.expiresAt < Date.now()) {
+        return interaction.reply({ content: '\u274c Session expired. Run `/partner wave` again.', ephemeral: true });
+      }
+
+      await interaction.reply({ content: `\ud83d\udce8 Fetching ads for **${session.pairs.length}** pair(s) and sending to your DMs...`, ephemeral: true });
+
+      try {
+        const dmChannel = await interaction.user.createDM();
+
+        await dmChannel.send(
+          `\ud83c\udf0a **Wave Session \u2014 ${session.pairs.length} pair(s)**\n` +
+          `Copy each ad and post it in the correct partner channel.`
+        );
+
+        for (let i = 0; i < session.pairs.length; i++) {
+          const [aId, bId] = session.pairs[i];
+          const gA    = session.guildsMap[aId];
+          const gB    = session.guildsMap[bId];
+          const nameA = guildName(gA ?? { guild_id: aId });
+          const nameB = guildName(gB ?? { guild_id: bId });
+          const jumpA = `https://discord.com/channels/${aId}/${gA?.channel_id}`;
+          const jumpB = `https://discord.com/channels/${bId}/${gB?.channel_id}`;
+
+          const adA = await fetchAdForGuild(interaction.client, userId, aId);
+          const adB = await fetchAdForGuild(interaction.client, userId, bId);
+
+          await dmChannel.send(
+            `\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\n` +
+            `**Pair ${i + 1}: ${nameA} \u2194 ${nameB}**\n\n` +
+            `**\ud83c\udfe0 Post in [${nameA}'s channel](${jumpA}):**\n` +
+            (adB ?? `\u26a0\ufe0f No ad found for ${nameB} \u2014 add to a wave folder`) +
+            `\n\n**\ud83c\udfe0 Post in [${nameB}'s channel](${jumpB}):**\n` +
+            (adA ?? `\u26a0\ufe0f No ad found for ${nameA} \u2014 add to a wave folder`)
+          );
+        }
+
+        await dmChannel.send(`\u2705 All ${session.pairs.length} pairs sent! Go post and then click **Mark All as Partnered**.`);
+      } catch {
+        await interaction.followUp({ content: '\u274c Could not DM you. Make sure your DMs are open.', ephemeral: true });
+      }
+      return;
+    }
   },
 
   // ─── Select menu handler ──────────────────────────────────────────────────────
@@ -583,8 +633,12 @@ module.exports = {
           new ActionRowBuilder().addComponents(
             new ButtonBuilder()
               .setCustomId(`pm_wave_confirm:${userId}`)
-              .setLabel('✅ Mark All as Partnered')
-              .setStyle(ButtonStyle.Success)
+              .setLabel('\u2705 Mark All as Partnered')
+              .setStyle(ButtonStyle.Success),
+            new ButtonBuilder()
+              .setCustomId(`pm_wave_getads:${userId}`)
+              .setLabel('\ud83d\udccb Get All Ads')
+              .setStyle(ButtonStyle.Primary)
           ),
         ],
       });
