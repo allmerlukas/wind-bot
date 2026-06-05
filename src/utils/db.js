@@ -147,11 +147,12 @@ db.exec(`
 
   -- Partner Manager: guilds each user manages (/partner setup, /partner add)
   CREATE TABLE IF NOT EXISTS pm_guilds (
-    user_id    TEXT NOT NULL,
-    guild_id   TEXT NOT NULL,
-    channel_id TEXT NOT NULL,   -- partner channel in that guild
-    label      TEXT,            -- optional display name
-    added_at   INTEGER NOT NULL,
+    user_id         TEXT NOT NULL,
+    guild_id        TEXT NOT NULL,
+    channel_id      TEXT NOT NULL,   -- partner channel in that guild (where YOU post)
+    read_channel_id TEXT,            -- ad channel in that guild (where THEY post their ad)
+    label           TEXT,            -- optional display name
+    added_at        INTEGER NOT NULL,
     PRIMARY KEY (user_id, guild_id)
   );
 

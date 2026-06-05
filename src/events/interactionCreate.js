@@ -4,6 +4,7 @@ const { sendWaveMessages, dmWaveToUser, executeCopy, copySessions, buildPageCont
 const { STEPS, buildStepMessage, buildSummary } = require('../commands/config');
 const setupStore = require('../utils/setupStore');
 const partnerCmd = require('../commands/partner');
+const helpCmd    = require('../commands/help');
 const {
   ChannelType, PermissionsBitField, ActionRowBuilder,
   ButtonBuilder, ButtonStyle, EmbedBuilder,
@@ -167,6 +168,11 @@ module.exports = {
       // ── Partner wave: pick which server gets double ───────────────────────
       if (interaction.customId.startsWith('pm_wave_double_select:')) {
         return partnerCmd.handleSelect(interaction);
+      }
+
+      // ── Help category picker ───────────────────────────────────────────────
+      if (interaction.customId.startsWith('help_category:')) {
+        return helpCmd.handleSelect(interaction);
       }
 
       // ── Partner edit: guild picker ──────────────────────────────────────────

@@ -9,6 +9,11 @@ const db = require('./db');
 
 const PM_COOLDOWN_MS = 2 * 24 * 60 * 60 * 1000; // 2 days
 
+// ─── Migrate: add read_channel_id if the column doesn't exist yet ─────────────
+try {
+  db.prepare('ALTER TABLE pm_guilds ADD COLUMN read_channel_id TEXT').run();
+} catch { /* column already exists — fine */ }
+
 // ─── Canonical pair key (always smaller ID first) ────────────────────────────
 
 function pairKey(a, b) {
@@ -18,12 +23,17 @@ function pairKey(a, b) {
 // ─── Prepared statements ─────────────────────────────────────────────────────
 
 const stmtUpsertGuild = db.prepare(`
-  INSERT INTO pm_guilds (user_id, guild_id, channel_id, label, added_at)
-  VALUES (?, ?, ?, ?, ?)
+  INSERT INTO pm_guilds (user_id, guild_id, channel_id, read_channel_id, label, added_at)
+  VALUES (?, ?, ?, ?, ?, ?)
   ON CONFLICT (user_id, guild_id) DO UPDATE SET
-    channel_id = excluded.channel_id,
-    label      = excluded.label,
-    added_at   = excluded.added_at
+    channel_id      = excluded.channel_id,
+    read_channel_id = COALESCE(excluded.read_channel_id, read_channel_id),
+    label           = excluded.label,
+    added_at        = excluded.added_at
+`);
+
+const stmtSetReadChannel = db.prepare(`
+  UPDATE pm_guilds SET read_channel_id = ? WHERE user_id = ? AND guild_id = ?
 `);
 
 const stmtDeleteGuild = db.prepare(
@@ -50,8 +60,8 @@ const stmtGetPair = db.prepare(
 
 // ─── Guild management ─────────────────────────────────────────────────────────
 
-function addGuild(userId, guildId, channelId, label = null) {
-  stmtUpsertGuild.run(userId, guildId, channelId, label, Date.now());
+function addGuild(userId, guildId, channelId, label = null, readChannelId = null) {
+  stmtUpsertGuild.run(userId, guildId, channelId, readChannelId, label, Date.now());
 }
 
 function removeGuild(userId, guildId) {
@@ -65,8 +75,20 @@ function getGuilds(userId) {
   return stmtGetAllGuilds.all(userId);
 }
 
+function getGuild(userId, guildId) {
+  return stmtGetGuild.get(userId, guildId) ?? null;
+}
+
 function hasGuild(userId, guildId) {
   return !!stmtGetGuild.get(userId, guildId);
+}
+
+/**
+ * Sets (or clears) the read_channel_id for a registered guild.
+ * read_channel_id = the channel where THEY post their ad (for fetching).
+ */
+function setReadChannel(userId, guildId, readChannelId) {
+  stmtSetReadChannel.run(readChannelId, userId, guildId);
 }
 
 // ─── Pair cooldown ────────────────────────────────────────────────────────────
@@ -87,7 +109,9 @@ module.exports = {
   addGuild,
   removeGuild,
   getGuilds,
+  getGuild,
   hasGuild,
+  setReadChannel,
   recordPair,
   pairedRecently,
   PM_COOLDOWN_MS,

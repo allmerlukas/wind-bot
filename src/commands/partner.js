@@ -249,6 +249,21 @@ module.exports = {
     )
 
     .addSubcommand(sub =>
+      sub.setName('read')
+        .setDescription('Read the ad from a registered guild\'s ad channel')
+        .addStringOption(opt =>
+          opt.setName('guild_id')
+            .setDescription('Guild ID to read the ad from')
+            .setRequired(true)
+        )
+        .addStringOption(opt =>
+          opt.setName('channel_id')
+            .setDescription('Override: specific channel ID to read from (optional)')
+            .setRequired(false)
+        )
+    )
+
+    .addSubcommand(sub =>
       sub.setName('edit')
         .setDescription('Edit the channel ID or label of a registered guild')
     ),
@@ -359,6 +374,87 @@ module.exports = {
         content: '✏️ Which guild do you want to edit?',
         components: [new ActionRowBuilder().addComponents(select)],
         ephemeral: true,
+      });
+    }
+
+    // ── /partner read ─────────────────────────────────────────────────────────
+    if (sub === 'read') {
+      const targetGuildId  = interaction.options.getString('guild_id');
+      const overrideChId   = interaction.options.getString('channel_id');
+
+      if (!/^\d{17,19}$/.test(targetGuildId)) {
+        return interaction.reply({ content: '\u274c Invalid guild ID.', ephemeral: true });
+      }
+
+      // Check it's registered in this user's list
+      const registered = pmStore.getGuild(userId, targetGuildId);
+      if (!registered) {
+        return interaction.reply({
+          content: `\u274c Guild \`${targetGuildId}\` is not in your partner list. Add it first with \`/partner add\`.`,
+          ephemeral: true,
+        });
+      }
+
+      // Resolve which channel to read from:
+      //   1. Explicit override from command option
+      //   2. Saved read_channel_id on this guild entry
+      //   3. Fall back to partner channel
+      const channelToRead = overrideChId ?? registered.read_channel_id ?? registered.channel_id;
+
+      // If user provided an override channel, save it for next time
+      if (overrideChId && overrideChId !== registered.read_channel_id) {
+        pmStore.setReadChannel(userId, targetGuildId, overrideChId);
+      }
+
+      await interaction.deferReply({ ephemeral: true });
+
+      // Try to fetch the ad — scoped to this specific guild + channel only
+      const INVITE_RE_LOCAL = /discord\.gg\/[a-zA-Z0-9-]+|discord\.com\/invite\/[a-zA-Z0-9-]+/i;
+      const PING_RE_LOCAL   = /@(everyone|here|&\d+|\d+)/g;
+
+      let adText = null;
+      try {
+        const guild = interaction.client.guilds.cache.get(targetGuildId);
+        if (guild) {
+          const ch = guild.channels.cache.get(channelToRead);
+          if (ch?.isTextBased()) {
+            const msgs = await ch.messages.fetch({ limit: 50 });
+            const adMsg = [...msgs.values()].find(m =>
+              m.content?.trim().length > 0 && INVITE_RE_LOCAL.test(m.content)
+            );
+            if (adMsg) {
+              adText = adMsg.content.replace(PING_RE_LOCAL, '').replace(/\s{2,}/g, ' ').trim();
+            }
+          }
+        }
+      } catch { /* swallow */ }
+
+      // Fall back to waves if bot isn't in that server
+      if (!adText) {
+        adText = await findAdInWaves(interaction.client, userId, targetGuildId);
+      }
+
+      const displayName = registered.label ?? `Guild \`${targetGuildId}\``;
+      const jumpLink2   = `https://discord.com/channels/${targetGuildId}/${channelToRead}`;
+
+      if (!adText) {
+        return interaction.editReply({
+          content: [
+            `\u26a0\ufe0f No ad found for **${displayName}**.`,
+            `Checked channel \`${channelToRead}\`.`,
+            `Make sure the bot is in that server and the channel has a message with a discord.gg link,`,
+            `or add their ad to one of your \`/wave\` folders.`,
+          ].join('\n'),
+        });
+      }
+
+      return interaction.editReply({
+        content: [
+          `**\ud83d\udccb Ad from ${displayName}** ([Jump \u2192](${jumpLink2}))`,
+          `*(Saved read channel: \`${channelToRead}\`)*`,
+          '',
+          adText,
+        ].join('\n'),
       });
     }
 
