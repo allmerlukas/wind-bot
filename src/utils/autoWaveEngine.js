@@ -170,7 +170,7 @@ async function resolvePing(targetGuild, targetCfg) {
   return '@here';
 }
 
-// ─── Add Oblivion button ──────────────────────────────────────────────────────
+// ─── Add Wind Bot button ─────────────────────────────────────────────────────
 
 function buildAddBotRow(clientId) {
   const url =
@@ -179,7 +179,7 @@ function buildAddBotRow(clientId) {
 
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setLabel('➕ Add Oblivion')
+      .setLabel('➕ Add Wind Bot')
       .setStyle(ButtonStyle.Link)
       .setURL(url)
   );
@@ -270,7 +270,30 @@ async function tick(client) {
       // a. Member minimum
       if (targetGuild.memberCount < MIN_MEMBERS) { skippedMembers++; continue; }
 
-      // b. Per-server cooldown
+      // b. Member count range filter
+      // If source has a range: BOTH source's own count AND target's count must be within source's range.
+      // If target has a range: BOTH target's own count AND source's count must be within target's range.
+      {
+        const srcMin   = sourceCfg.minMembers ?? null;
+        const srcMax   = sourceCfg.maxMembers ?? null;
+        const tgtMin   = targetCfg.minMembers ?? null;
+        const tgtMax   = targetCfg.maxMembers ?? null;
+        const srcCount = sourceGuild.memberCount;
+        const tgtCount = targetGuild.memberCount;
+
+        if (srcMin !== null && srcMax !== null) {
+          if (srcCount < srcMin || srcCount > srcMax || tgtCount < srcMin || tgtCount > srcMax) {
+            skippedMembers++; continue;
+          }
+        }
+        if (tgtMin !== null && tgtMax !== null) {
+          if (tgtCount < tgtMin || tgtCount > tgtMax || srcCount < tgtMin || srcCount > tgtMax) {
+            skippedMembers++; continue;
+          }
+        }
+      }
+
+      // c. Per-server cooldown
       const delayMs  = Math.max((targetCfg.partnerDelayHours ?? 24) * 3_600_000, MIN_COOLDOWN_MS);
       const lastRecv = autoWaveStore.getLastReceived(targetId);
       if (now - lastRecv < delayMs) { skippedCooldown++; continue; }
@@ -316,7 +339,7 @@ async function tick(client) {
       } catch (err) {
         await logToGuild(targetGuild, targetCfg,
           `⚠️ **Auto-Wave:** An ad was scheduled for your server but could not be delivered. ` +
-          `Please check that Oblivion has permission to send messages in <#${targetCfg.partnerChannelId}>.`
+          `Please check that Wind Bot has permission to send messages in <#${targetCfg.partnerChannelId}>.`
         );
         logError('AutoWave/Send', err, targetId);
         console.error(`[AutoWave] ❌ Failed → ${targetGuild.name}:`, err.message);

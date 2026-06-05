@@ -1,6 +1,6 @@
 /**
  * /credits — Public command
- * Shows credits for Oblivion bot.
+ * Shows credits for Wind Bot.
  */
 
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
@@ -8,18 +8,18 @@ const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('credits')
-    .setDescription('See who built Oblivion and the inspiration behind it'),
+    .setDescription('See who built Wind Bot and the inspiration behind it'),
 
   async execute(interaction) {
     const embed = new EmbedBuilder()
       .setColor(0x5865F2)
-      .setTitle('✨ Oblivion — Credits')
+      .setTitle('✨ Wind Bot — Credits')
       .setDescription(
         [
-          '**Oblivion** is a custom Discord bot built for partner management, server automation, and more.',
+          '**Wind Bot** is a custom Discord bot built for partner management, server automation, and more.',
           '',
           '👤 **Developer**',
-          '> <@' + interaction.client.application.owner?.id + '> — Built and maintained Oblivion',
+          '> <@' + interaction.client.application.owner?.id + '> — Built and maintained Wind Bot',
           '',
           '💡 **Inspiration**',
           '> **WaveBot** by **copa** — the original idea for the partner wave system',
@@ -28,7 +28,7 @@ module.exports = {
           '> [discord.js v14](https://discord.js.org) • [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) • Node.js',
         ].join('\n')
       )
-      .setFooter({ text: 'Oblivion • Thanks for using the bot!' })
+      .setFooter({ text: 'Wind Bot • Thanks for using the bot!' })
       .setTimestamp();
 
     return interaction.reply({ embeds: [embed] });

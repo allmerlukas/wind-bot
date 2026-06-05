@@ -171,7 +171,7 @@ const CATEGORIES = {
       { name: '/avatar `[user]`',       value: 'View a user\'s avatar in full size.' },
       { name: '/announce `message`',    value: 'Send an announcement embed to a channel.' },
       { name: '/poll `question`',       value: 'Create a poll with up to 4 options.' },
-      { name: '/credits',               value: 'View Oblivion\'s credits and version.' },
+      { name: '/credits',               value: 'View Wind Bot\'s credits and version.' },
     ],
   },
 
@@ -243,12 +243,12 @@ const CATEGORIES = {
 function buildOverview() {
   return new EmbedBuilder()
     .setColor(0x7c5cfc)
-    .setTitle('📖 Oblivion — Command Help')
+    .setTitle('📖 Wind Bot — Command Help')
     .setDescription(
       'Select a category below to see detailed command information.\n\n' +
       Object.values(CATEGORIES).map(c => `${c.emoji} **${c.label.replace(/^. /, '')}** — ${c.description}`).join('\n')
     )
-    .setFooter({ text: 'Oblivion Bot • Use the menu below to navigate' })
+    .setFooter({ text: 'Wind Bot • Use the menu below to navigate' })
     .setTimestamp();
 }
 
@@ -261,7 +261,7 @@ function buildCategoryEmbed(key) {
     .setTitle(`${cat.emoji} ${cat.label.replace(/^. /, '')}`)
     .setDescription(cat.description)
     .addFields(cat.fields.map(f => ({ name: f.name, value: f.value, inline: false })))
-    .setFooter({ text: 'Oblivion Bot • /help for overview' })
+    .setFooter({ text: 'Wind Bot • /help for overview' })
     .setTimestamp();
 }
 
@@ -289,7 +289,7 @@ function buildMenu(userId) {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('help')
-    .setDescription('View all Oblivion commands and how to use them'),
+    .setDescription('View all Wind Bot commands and how to use them'),
 
   async execute(interaction) {
     return interaction.reply({

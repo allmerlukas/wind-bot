@@ -83,6 +83,15 @@ const STEPS = [
     type:        'modal',
     storeKey:    'partnerDelayHours',
   },
+  {
+    id:          'cfg_memberrange',
+    label:       '👥 Member Count Range (optional)',
+    description: 'Only Auto-Wave with servers in this member count range. Your server must also qualify.\nFormat: `min-max` (e.g. `100-5000`). Leave blank / skip to allow any size.',
+    storeKey:    'minMembers', // used only for "is step complete" detection
+    type:        'modal',
+    inputLabel:  'Member range (e.g. 100-5000, or leave blank)',
+    inputId:     'cfg_memberrange_input',
+  },
 ];
 
 // ─── Helper: build wizard step message ───────────────────────────────────────
@@ -128,13 +137,15 @@ function buildStepMessage(guildId, stepIndex) {
       )
     );
   } else if (step.type === 'modal') {
+    // Determine button label based on which step this is
+    const isRangeStep = step.id === 'cfg_memberrange';
     rows.push(
       new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId(`${step.id}:${stepIndex}`)
-          .setLabel('Set Delay Hours')
+          .setLabel(isRangeStep ? 'Set Member Range' : 'Set Delay Hours')
           .setStyle(ButtonStyle.Primary)
-          .setEmoji('⏱️')
+          .setEmoji(isRangeStep ? '👥' : '⏱️')
       )
     );
   }
@@ -167,6 +178,7 @@ function buildSummary(guildId) {
     { name: '👥 Member Role',         value: cfg.memberRoleId       ? `<@&${cfg.memberRoleId}>`      : '`not set`', inline: true },
     { name: '🔔 Partner Ping Role',   value: cfg.partnerPingRoleId  ? `<@&${cfg.partnerPingRoleId}>` : '`not set`', inline: true },
     { name: '⏱️ Partner Delay',       value: `${cfg.partnerDelayHours ?? 24}h`,                       inline: true },
+    { name: '👥 Member Range',        value: (cfg.minMembers != null && cfg.maxMembers != null) ? `${cfg.minMembers}–${cfg.maxMembers} members` : '`any size`', inline: true },
   ];
 
   const isReady = cfg.partnerChannelId && cfg.adChannelId;
@@ -224,6 +236,7 @@ module.exports = {
           { name: '👥 Member Role',         value: cfg.memberRoleId       ? `<@&${cfg.memberRoleId}>`      : '`not set`', inline: true },
           { name: '🔔 Partner Ping Role',   value: cfg.partnerPingRoleId  ? `<@&${cfg.partnerPingRoleId}>` : '`not set`', inline: true },
           { name: '⏱️ Partner Delay',       value: `${cfg.partnerDelayHours ?? 24}h`,                       inline: true },
+          { name: '👥 Member Range',        value: (cfg.minMembers != null && cfg.maxMembers != null) ? `${cfg.minMembers}–${cfg.maxMembers} members` : '`any size`', inline: true },
           {
             name:  isReady ? '✅ Status' : '❌ Status',
             value: isReady

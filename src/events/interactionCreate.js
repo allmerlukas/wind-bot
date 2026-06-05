@@ -35,6 +35,39 @@ module.exports = {
       return interaction.update(buildStepMessage(interaction.guildId, nextStep));
     }
 
+    // ── Config wizard: modal submit (member range) ───────────────────────────────
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('cfg_memberrange_modal:')) {
+      const stepIndex = parseInt(interaction.customId.split(':')[1], 10);
+      const raw       = interaction.fields.getTextInputValue('cfg_memberrange_input').trim();
+
+      if (!raw) {
+        // Blank input = clear restriction
+        setupStore.set(interaction.guildId, 'minMembers', null);
+        setupStore.set(interaction.guildId, 'maxMembers', null);
+      } else {
+        const parts = raw.split('-');
+        const minVal = parseInt(parts[0], 10);
+        const maxVal = parseInt(parts[1], 10);
+
+        if (parts.length !== 2 || isNaN(minVal) || isNaN(maxVal) || minVal < 1 || maxVal < minVal) {
+          await interaction.reply({
+            content: '❌ Invalid format. Use `min-max` (e.g. `100-5000`) where min ≥ 1 and max ≥ min.',
+            ephemeral: true,
+          });
+          return;
+        }
+
+        setupStore.set(interaction.guildId, 'minMembers', minVal);
+        setupStore.set(interaction.guildId, 'maxMembers', maxVal);
+      }
+
+      const nextStep = stepIndex + 1;
+      if (nextStep >= STEPS.length) {
+        return interaction.update({ embeds: [buildSummary(interaction.guildId)], components: [] });
+      }
+      return interaction.update(buildStepMessage(interaction.guildId, nextStep));
+    }
+
     // ── Partner edit: modal submit ────────────────────────────────────────────────
     if (interaction.isModalSubmit() && interaction.customId.startsWith('pm_edit_modal:')) {
       return partnerCmd.handleModal(interaction);
@@ -105,6 +138,26 @@ module.exports = {
         .setMinLength(1)
         .setMaxLength(4)
         .setRequired(true);
+
+      modal.addComponents(new ActionRowBuilder().addComponents(input));
+      return interaction.showModal(modal);
+    }
+
+    // ── Config wizard: member range button (opens modal) ──────────────────────────
+    if (interaction.isButton() && interaction.customId.startsWith('cfg_memberrange:')) {
+      const stepIndex = interaction.customId.split(':')[1];
+      const modal = new ModalBuilder()
+        .setCustomId(`cfg_memberrange_modal:${stepIndex}`)
+        .setTitle('Set Member Count Range');
+
+      const input = new TextInputBuilder()
+        .setCustomId('cfg_memberrange_input')
+        .setLabel('Member range (e.g. 100-5000, or leave blank)')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('e.g. 100-5000')
+        .setMinLength(0)
+        .setMaxLength(20)
+        .setRequired(false);
 
       modal.addComponents(new ActionRowBuilder().addComponents(input));
       return interaction.showModal(modal);

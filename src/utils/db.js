@@ -44,7 +44,9 @@ db.exec(`
     log_channel_id      TEXT,
     member_role_id      TEXT,
     partner_ping_role_id TEXT,
-    partner_delay_hours  INTEGER DEFAULT 24
+    partner_delay_hours  INTEGER DEFAULT 24,
+    min_members          INTEGER,            -- minimum member count for Auto-Wave partners (NULL = no min)
+    max_members          INTEGER             -- maximum member count for Auto-Wave partners (NULL = no max)
   );
 
   -- Auto-wave cooldown tracking

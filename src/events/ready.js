@@ -5,7 +5,7 @@ module.exports = {
   name: 'ready',
   once: true,
   async execute(client) {
-    console.log(`\n✅ Oblivion is online!`);
+    console.log(`\n✅ Wind Bot is online!`);
     console.log(`🤖 Logged in as: ${client.user.tag}`);
     console.log(`📡 Tracking partner links in all channels`);
     console.log(`🎁 Checking for active giveaways...\n`);

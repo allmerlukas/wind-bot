@@ -15,9 +15,15 @@
  *   memberRoleId        → member_role_id
  *   partnerPingRoleId   → partner_ping_role_id
  *   partnerDelayHours   → partner_delay_hours
+ *   minMembers          → min_members
+ *   maxMembers          → max_members
  */
 
 const db = require('./db');
+
+// Migration: add new columns if they don't exist (safe on existing databases)
+try { db.prepare('ALTER TABLE guild_config ADD COLUMN min_members INTEGER').run(); } catch {}
+try { db.prepare('ALTER TABLE guild_config ADD COLUMN max_members INTEGER').run(); } catch {}
 
 const KEY_MAP = {
   welcomeChannelId:  'welcome_channel_id',
@@ -29,6 +35,8 @@ const KEY_MAP = {
   memberRoleId:      'member_role_id',
   partnerPingRoleId: 'partner_ping_role_id',
   partnerDelayHours: 'partner_delay_hours',
+  minMembers:        'min_members',
+  maxMembers:        'max_members',
 };
 
 // Reverse map: column → camelCase

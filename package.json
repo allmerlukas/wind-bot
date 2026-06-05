@@ -1,7 +1,7 @@
 {
-  "name": "oblivion-bot",
+  "name": "wind-bot",
   "version": "1.0.0",
-  "description": "Oblivion Bot - Discord Partner Link Tracker",
+  "description": "Wind Bot - Discord Partner Link Tracker",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
