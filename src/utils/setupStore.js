@@ -75,4 +75,20 @@ function set(guildId, key, value) {
   db.prepare(`UPDATE guild_config SET ${col} = ? WHERE guild_id = ?`).run(value, guildId);
 }
 
-module.exports = { get, set };
+/**
+ * Returns configs for ALL guilds that have at least one field set.
+ * Used by /config check to count enrolled servers.
+ */
+function getAll() {
+  const rows = db.prepare('SELECT * FROM guild_config').all();
+  return rows.map(row => {
+    const out = { guild_id: row.guild_id };
+    for (const col of COLUMNS) {
+      const camel = COL_MAP[col];
+      if (row[col] !== null && row[col] !== undefined) out[camel] = row[col];
+    }
+    return out;
+  });
+}
+
+module.exports = { get, set, getAll };

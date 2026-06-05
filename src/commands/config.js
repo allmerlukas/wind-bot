@@ -199,6 +199,10 @@ module.exports = {
     .addSubcommand(sub =>
       sub.setName('view')
         .setDescription('View the current Auto-Wave config for this server')
+    )
+    .addSubcommand(sub =>
+      sub.setName('check')
+        .setDescription('(Owner only) See how many servers the bot is in and how many are enrolled')
     ),
 
   async execute(interaction) {
@@ -229,6 +233,50 @@ module.exports = {
           },
         )
         .setFooter({ text: 'Auto-Wave Engine • Run /config setup to change settings' })
+        .setTimestamp();
+
+      return interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+    // ── /config check (owner only) ──────────────────────────────────────────
+    if (sub === 'check') {
+      const ownerId = process.env.OWNER_ID;
+      if (interaction.user.id !== ownerId) {
+        return interaction.reply({ content: '\u274c This command is owner-only.', ephemeral: true });
+      }
+
+      const totalServers  = interaction.client.guilds.cache.size;
+      const allConfigs    = setupStore.getAll();
+
+      // "Has a config row" = any field was ever set
+      const configuredCount = allConfigs.length;
+
+      // "Enrolled" = has at least partnerChannelId AND adChannelId
+      const enrolled = allConfigs.filter(c => c.partnerChannelId && c.adChannelId);
+      const enrolledCount = enrolled.length;
+
+      // Build a list of enrolled server names
+      const enrolledLines = enrolled.map(c => {
+        const guild = interaction.client.guilds.cache.get(c.guild_id);
+        const name  = guild ? guild.name : `Unknown (\`${c.guild_id}\`)`;
+        const delay = c.partnerDelayHours ?? 24;
+        return `\u2022 **${name}** — delay: ${delay}h`;
+      });
+
+      const embed = new EmbedBuilder()
+        .setColor(0x7c5cfc)
+        .setTitle('\ud83d\udcca Bot Network Overview')
+        .addFields(
+          { name: '\ud83c\udfe0 Total Servers',       value: `**${totalServers}**`,     inline: true },
+          { name: '\u2699\ufe0f Have Config Row',     value: `**${configuredCount}**`,  inline: true },
+          { name: '\u2705 Enrolled in Auto-Wave',     value: `**${enrolledCount}**`,    inline: true },
+          {
+            name: '\ud83d\udcdd Enrolled Servers',
+            value: enrolledLines.length > 0
+              ? enrolledLines.join('\n').slice(0, 1024)
+              : '*None yet*',
+          },
+        )
+        .setFooter({ text: 'Enrolled = has both partner channel + ad channel set' })
         .setTimestamp();
 
       return interaction.reply({ embeds: [embed], ephemeral: true });
