@@ -1,4 +1,4 @@
-# Oblivion Stack Bot
+# Wind bot
 
 A feature-rich Discord bot built with **discord.js v14** for server management, partner wave advertising, giveaways, tickets, and more.
 
@@ -44,35 +44,6 @@ A feature-rich Discord bot built with **discord.js v14** for server management, 
 - `/setup autorole` — Auto-assign role to new members
 - `/setup test` — Test your welcome message
 
-## 🚀 Setup
-
-### 1. Clone & Install
-```bash
-git clone https://github.com/allmerlukas/Oblivion-stack-bot.git
-cd Oblivion-stack-bot
-npm install
-```
-
-### 2. Configure `.env`
-Create a `.env` file in the root:
-```env
-BOT_TOKEN=your_bot_token_here
-CLIENT_ID=your_client_id_here
-GUILD_ID=your_guild_id_here
-PARTNER_CHANNEL_ID=your_channel_id_here
-DELETE_DELAY=5000
-```
-
-### 3. Deploy Commands
-```bash
-# Deploy all commands globally (up to 1 hour to propagate)
-node deploy-global.js
-```
-
-### 4. Start the Bot
-```bash
-node index.js
-```
 
 ## ⚠️ Required Bot Permissions
 - Manage Channels, Manage Roles, Manage Messages
@@ -80,23 +51,6 @@ node index.js
 - Send Messages, Embed Links, Add Reactions, Read Message History
 - View Channels
 
-## ⚠️ Privileged Intents
-Enable these in the [Discord Developer Portal](https://discord.com/developers/applications):
-- **Server Members Intent** — required for welcome messages and autorole
-- **Message Content Intent** — required for wave creation sessions
-
-## 📁 Project Structure
-```
-OblivionBot/
-├── src/
-│   ├── commands/       # All slash commands
-│   ├── events/         # Discord event handlers
-│   └── utils/          # Stores, managers, helpers
-├── data/               # Persistent JSON data (gitignored)
-├── deploy-global.js    # Global command deployment
-├── index.js            # Bot entry point
-└── .env                # Secrets (gitignored)
-```
 
 ## 📄 License
 MIT
