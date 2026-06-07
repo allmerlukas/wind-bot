@@ -57,6 +57,17 @@ module.exports = {
         )
     )
 
+    // dm_broadcast
+    .addSubcommand(sub =>
+      sub.setName('dm_broadcast')
+        .setDescription("DM a message to every server owner using the bot")
+        .addStringOption(opt =>
+          opt.setName('message')
+            .setDescription('Message to DM')
+            .setRequired(true)
+        )
+    )
+
     // error
     .addSubcommand(sub =>
       sub.setName('error')
@@ -212,6 +223,36 @@ module.exports = {
 
       return interaction.editReply({
         content: `📢 Broadcast complete.\n✅ Sent to **${sent}** guilds | ❌ Failed/no log channel: **${failed}** guilds`,
+      });
+    }
+
+    // /owner dm_broadcast
+    if (sub === 'dm_broadcast') {
+      const message = interaction.options.getString('message');
+      await interaction.deferReply({ ephemeral: true });
+
+      const ownerIds = new Set();
+      for (const guild of client.guilds.cache.values()) {
+        if (guild.ownerId) ownerIds.add(guild.ownerId);
+      }
+
+      let sent = 0, failed = 0;
+      let isFirst = true;
+      for (const ownerId of ownerIds) {
+        if (!isFirst) await new Promise(r => setTimeout(r, 5000));
+        isFirst = false;
+
+        try {
+          const user = await client.users.fetch(ownerId);
+          await user.send(`📢 **[Wind Bot Update]**\n${message}`);
+          sent++;
+        } catch {
+          failed++;
+        }
+      }
+
+      return interaction.editReply({
+        content: `📢 DM Broadcast complete.\n✅ Sent to **${sent}** owners | ❌ Failed (DMs off): **${failed}** owners`,
       });
     }
 
