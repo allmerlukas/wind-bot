@@ -27,9 +27,9 @@ const { logError }   = require('../utils/errorStore');
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
 function buildAddBotRow(clientId) {
-  const url = `https://discord.com/oauth2/authorize?client_id=${clientId}&permissions=8&scope=bot%20applications.commands`;
+  const url = `https://discord.gg/2H39ahH3sB`;
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setLabel('➕ Add Oblivion').setStyle(ButtonStyle.Link).setURL(url)
+    new ButtonBuilder().setLabel('➕ Add Wind Bot').setStyle(ButtonStyle.Link).setURL(url)
   );
 }
 

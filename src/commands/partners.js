@@ -38,7 +38,7 @@ module.exports = {
           `<@${target.id}> has posted **${totalPartners}** unique ${partnerWord}.`
         )
         .setThumbnail(target.displayAvatarURL({ dynamic: true }))
-        .setFooter({ text: 'Oblivion Bot • Only unique daily links count' })
+        .setFooter({ text: 'Wind Bot • Only unique daily links count' })
         .setTimestamp();
 
       return interaction.reply({ embeds: [embed], ephemeral: true });
@@ -71,7 +71,7 @@ module.exports = {
         .setColor(0xFFD700)
         .setTitle('🏆 Partner Leaderboard')
         .setDescription(rows.join('\n'))
-        .setFooter({ text: 'Oblivion Bot • Top 10 by unique partner links' })
+        .setFooter({ text: 'Wind Bot • Top 10 by unique partner links' })
         .setTimestamp();
 
       return interaction.reply({ embeds: [embed] });

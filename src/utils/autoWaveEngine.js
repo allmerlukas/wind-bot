@@ -174,9 +174,7 @@ async function resolvePing(targetGuild, targetCfg) {
 // ─── Add Wind Bot button ─────────────────────────────────────────────────────
 
 function buildAddBotRow(clientId) {
-  const url =
-    `https://discord.com/oauth2/authorize?client_id=${clientId}` +
-    `&permissions=8&scope=bot%20applications.commands`;
+  const url = 'https://discord.gg/2H39ahH3sB';
 
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
