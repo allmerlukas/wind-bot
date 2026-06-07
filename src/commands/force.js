@@ -86,6 +86,7 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('force')
     .setDescription('Owner: manually trigger partner sends')
+    .setDefaultMemberPermissions(0n)
 
     // /force partner source destination
     .addSubcommand(sub =>

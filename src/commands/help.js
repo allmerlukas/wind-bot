@@ -11,6 +11,8 @@ const {
   ActionRowBuilder,
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
+  ApplicationIntegrationType,
+  InteractionContextType,
 } = require('discord.js');
 
 // ─── Category definitions ─────────────────────────────────────────────────────
@@ -329,7 +331,16 @@ function buildMenu(userId) {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('help')
-    .setDescription('View all Wind Bot commands and how to use them'),
+    .setDescription('View all Wind Bot commands and how to use them')
+    .setIntegrationTypes([
+      ApplicationIntegrationType.GuildInstall,
+      ApplicationIntegrationType.UserInstall,
+    ])
+    .setContexts([
+      InteractionContextType.Guild,
+      InteractionContextType.BotDM,
+      InteractionContextType.PrivateChannel,
+    ]),
 
   async execute(interaction) {
     return interaction.reply({

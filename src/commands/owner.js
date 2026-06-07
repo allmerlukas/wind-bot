@@ -26,6 +26,7 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('owner')
     .setDescription('Owner-only bot controls')
+    .setDefaultMemberPermissions(0n)
 
     // status
     .addSubcommand(sub =>

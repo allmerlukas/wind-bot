@@ -51,14 +51,14 @@ const STEPS = [
   {
     id:          'cfg_member_role',
     label:       '👥 Member Role',
-    description: 'Select the role held by **≥ 90%** of your members. Used as a ping for servers with 1,000+ members.',
+    description: 'Select the role held by **≥ 80%** of your members. Used as a ping for servers with 1,000+ members.',
     type:        'role',
     storeKey:    'memberRoleId',
     checkFn:     async (role, guild) => {
       await guild.members.fetch();
       const pct = role.members.size / guild.memberCount;
-      if (pct < 0.90)
-        return `⚠️ **${role.name}** only covers **${Math.round(pct * 100)}%** of members — needs ≥ 90%. Pick a more common role.`;
+      if (pct < 0.80)
+        return `⚠️ **${role.name}** only covers **${Math.round(pct * 100)}%** of members — needs ≥ 80%. Pick a more common role.`;
       return null;
     },
   },

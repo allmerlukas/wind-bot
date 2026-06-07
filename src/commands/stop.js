@@ -10,7 +10,8 @@ const { isEngineRunning, setEngineState }   = require('../utils/autoWaveEngine')
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('stop')
-    .setDescription('Owner only: Turn off the Auto-Wave engine for all servers'),
+    .setDescription('Toggle Auto-Wave engine on or off globally (Owner only)')
+    .setDefaultMemberPermissions(0n),
 
   async execute(interaction) {
     // Only owner can use this command
