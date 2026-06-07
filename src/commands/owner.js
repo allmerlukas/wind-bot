@@ -164,12 +164,17 @@ module.exports = {
 
       for (const guild of guilds) {
         const cfg = setupStore.get(guild.id);
-        if (cfg.partnerChannelId && cfg.adChannelId) {
+        const isReady = cfg.partnerChannelId && cfg.adChannelId && cfg.logChannelId && cfg.memberRoleId && cfg.partnerPingRoleId && cfg.partnerDelayHours;
+        if (isReady) {
           enrolled.push(`✅ **${guild.name}** — delay: ${cfg.partnerDelayHours ?? 24}h | members: ${guild.memberCount}`);
         } else {
           const what = [];
           if (!cfg.partnerChannelId) what.push('partner_channel');
           if (!cfg.adChannelId)      what.push('ad_channel');
+          if (!cfg.logChannelId)     what.push('log_channel');
+          if (!cfg.memberRoleId)     what.push('member_role');
+          if (!cfg.partnerPingRoleId) what.push('ping_role');
+          if (!cfg.partnerDelayHours) what.push('delay_hours');
           missing.push(`❌ **${guild.name}** — missing: \`${what.join(', ')}\``);
         }
       }
@@ -197,12 +202,22 @@ module.exports = {
 
       for (const guild of client.guilds.cache.values()) {
         const cfg = setupStore.get(guild.id);
-        if (!cfg.logChannelId) { failed++; continue; }
+        
+        // Try to find a channel to broadcast to: Log -> Partner -> System
+        let targetChannelId = cfg.logChannelId || cfg.partnerChannelId || guild.systemChannelId;
+        
+        if (!targetChannelId) { 
+          // If no preferred channel, try to find ANY text channel the bot can send in
+          const firstText = guild.channels.cache.find(c => c.isTextBased() && c.permissionsFor(guild.members.me)?.has('SendMessages'));
+          targetChannelId = firstText?.id;
+        }
 
-        const ch = guild.channels.cache.get(cfg.logChannelId);
-        if (!ch?.isTextBased()) { failed++; continue; }
+        if (!targetChannelId) { failed++; continue; }
 
         try {
+          const ch = await guild.channels.fetch(targetChannelId).catch(() => null);
+          if (!ch?.isTextBased()) { failed++; continue; }
+          
           await ch.send(`📢 **[Owner Broadcast]**\n${message}`);
           sent++;
         } catch {
