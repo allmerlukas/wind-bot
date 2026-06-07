@@ -151,11 +151,16 @@ function buildStepMessage(guildId, stepIndex) {
   }
 
   // Skip + Done buttons
-  const nav = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`cfg_skip:${stepIndex}`)
-      .setLabel('Skip')
-      .setStyle(ButtonStyle.Secondary),
+  const nav = new ActionRowBuilder();
+  if (stepIndex === STEPS.length - 1) {
+    nav.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`cfg_skip:${stepIndex}`)
+        .setLabel('Skip')
+        .setStyle(ButtonStyle.Secondary)
+    );
+  }
+  nav.addComponents(
     new ButtonBuilder()
       .setCustomId('cfg_done')
       .setLabel('Finish Setup')
@@ -223,7 +228,7 @@ module.exports = {
     // ── /config view ─────────────────────────────────────────────────────────
     if (sub === 'view') {
       const cfg     = setupStore.get(interaction.guildId);
-      const isReady = cfg.partnerChannelId && cfg.adChannelId;
+      const isReady = cfg.partnerChannelId && cfg.adChannelId && cfg.logChannelId && cfg.memberRoleId && cfg.partnerPingRoleId && cfg.partnerDelayHours;
 
       const embed = new EmbedBuilder()
         .setColor(0x5865F2)
@@ -241,7 +246,7 @@ module.exports = {
             name:  isReady ? '✅ Status' : '❌ Status',
             value: isReady
               ? 'This server is enrolled in Auto-Wave.'
-              : 'Set at least `Partner Channel` and `Ad Channel` to enable Auto-Wave.',
+              : 'Please complete all required steps in `/config setup` to enable Auto-Wave.',
             inline: false,
           },
         )

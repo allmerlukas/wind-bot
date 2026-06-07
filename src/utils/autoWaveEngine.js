@@ -137,40 +137,35 @@ function validateAd(adContent) {
 // ─── Ping resolver ────────────────────────────────────────────────────────────
 // Tiers: basic (no ping) | here | partnerhere | member
 
-async function resolvePing(targetGuild, targetCfg) {
-  const mc = targetGuild.memberCount;
+async function resolvePing(sourceGuild, targetGuild, targetCfg) {
+  const diff = targetGuild.memberCount - sourceGuild.memberCount;
 
-  // Nano (<100) — basic, no ping
-  if (mc < 100) return '';
+  let tier = 0; // Tier 0: Member Role
+  if (diff >= 300) tier = 1; // Tier 1: @here
+  if (diff >= 1000) tier = 2; // Tier 2: Partner Ping Role
+  if (diff >= 6000) tier = 3; // Tier 3: Nothing
+  // diff >= 10000 is still Tier 3 (Nothing)
 
-  // Small (100–499) — member role if ≥80%, else @here
-  if (mc < 500) {
+  if (tier === 0) {
     const role = targetGuild.roles.cache.get(targetCfg.memberRoleId);
     if (role) {
-      const pct = role.members.size / mc;
+      const pct = role.members.size / targetGuild.memberCount;
       if (pct >= 0.80) return `<@&${role.id}>`;
-      
-      // Log warning for small servers failing the check
-      logToGuild(targetGuild, targetCfg,
-        `⚠️ **Auto-Wave ping warning:** member_role only covers ${Math.round(pct * 100)}% of members ` +
-        `(needs ≥80%). Falling back to @here.`
-      ).catch(() => {});
     }
+    tier = 1; // Fallback to Tier 1 if role is missing or fails 80% rule
+  }
+
+  if (tier === 1) {
     return '@here';
   }
 
-  // Medium (500–999) — @here + partner ping role (if configured and ≥10%)
-  if (mc < 1000) {
+  if (tier === 2) {
     const role = targetGuild.roles.cache.get(targetCfg.partnerPingRoleId);
-    if (role) {
-      const pct = role.members.size / mc;
-      if (pct >= 0.10) return `@here <@&${role.id}>`;
-    }
-    return '@here';
+    if (role) return `<@&${role.id}>`;
+    tier = 3; // Fallback to Tier 3 if role is missing
   }
 
-  // Large (1000+) — @here
-  return '@here';
+  return ''; // Tier 3 (Nothing)
 }
 
 // ─── Add Wind Bot button ─────────────────────────────────────────────────────
@@ -193,6 +188,10 @@ function buildAddBotRow(clientId) {
 function validateGuild(guildId, guild, cfg) {
   if (!cfg.partnerChannelId) return 'no_partner_channel';
   if (!cfg.adChannelId)      return 'no_ad_channel';
+  if (!cfg.logChannelId)     return 'no_log_channel';
+  if (!cfg.memberRoleId)     return 'no_member_role';
+  if (!cfg.partnerPingRoleId) return 'no_ping_role';
+  if (!cfg.partnerDelayHours) return 'no_delay_hours';
   if (!guild.channels.cache.get(cfg.partnerChannelId)?.isTextBased()) return 'partner_channel_inaccessible';
   if (!guild.channels.cache.get(cfg.adChannelId)?.isTextBased())      return 'ad_channel_inaccessible';
   if (isBlacklisted(guildId))  return 'blacklisted';
@@ -319,7 +318,7 @@ async function tick(client) {
       }
 
       // 5. Resolve ping and send ─────────────────────────────────────────────
-      const ping        = await resolvePing(targetGuild, targetCfg);
+      const ping        = await resolvePing(sourceGuild, targetGuild, targetCfg);
       const finalContent = ping ? `${rawAd}\n\n${ping}` : rawAd;
 
       const partnerChannel = targetGuild.channels.cache.get(targetCfg.partnerChannelId);
