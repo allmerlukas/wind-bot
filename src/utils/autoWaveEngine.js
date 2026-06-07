@@ -156,11 +156,11 @@ async function resolvePing(targetGuild, targetCfg) {
     return '@here';
   }
 
-  // Large (1000+) — member role if ≥90%, else @here
+  // Large (1000+) — member role if ≥80%, else @here
   const role = targetGuild.roles.cache.get(targetCfg.memberRoleId);
   if (role) {
     const pct = role.members.size / mc;
-    if (pct >= 0.90) return `<@&${role.id}>`;
+    if (pct >= 0.80) return `<@&${role.id}>`;
 
     // Log the warning but don't expose details to other servers
     await logToGuild(targetGuild, targetCfg,
