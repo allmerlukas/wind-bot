@@ -28,6 +28,7 @@ const pmStore     = require('../utils/pmStore');
 const setupStore  = require('../utils/setupStore');
 const waveStore   = require('../utils/waveStore');
 const { extractInviteCodes } = require('../utils/inviteChecker');
+const { stripPings }         = require('../utils/pingStripper');
 
 // ─── Ad fetcher ───────────────────────────────────────────────────────────────
 // Two-stage lookup for a guild's ad:
@@ -35,7 +36,6 @@ const { extractInviteCodes } = require('../utils/inviteChecker');
 //   2. Scan the user's wave folders for an ad whose invite resolves to guildId
 
 const INVITE_RE = /discord\.gg\/[a-zA-Z0-9-]+|discord\.com\/invite\/[a-zA-Z0-9-]+/i;
-const PING_RE   = /@(everyone|here|&\d+|\d+)/g;
 
 // Stage 1 — fetch from the guild's configured ad channel
 async function fetchAdFromChannel(client, guildId) {
@@ -51,7 +51,7 @@ async function fetchAdFromChannel(client, guildId) {
       m.content?.trim().length > 0 && INVITE_RE.test(m.content)
     );
     if (!adMsg) return null;
-    return adMsg.content.replace(PING_RE, '').replace(/\s{2,}/g, ' ').trim() || null;
+    return stripPings(adMsg.content) || null;
   } catch { return null; }
 }
 
@@ -66,7 +66,7 @@ async function findAdInWaves(client, userId, guildId) {
       try {
         const invite = await client.fetchInvite(code);
         if (invite.guild?.id === guildId) {
-          return ad.replace(PING_RE, '').replace(/\s{2,}/g, ' ').trim();
+          return stripPings(ad);
         }
       } catch { /* dead or inaccessible — keep scanning */ }
     }
@@ -410,7 +410,6 @@ module.exports = {
 
       // Try to fetch the ad — scoped to this specific guild + channel only
       const INVITE_RE_LOCAL = /discord\.gg\/[a-zA-Z0-9-]+|discord\.com\/invite\/[a-zA-Z0-9-]+/i;
-      const PING_RE_LOCAL   = /@(everyone|here|&\d+|\d+)/g;
 
       let adText = null;
       try {
@@ -423,7 +422,7 @@ module.exports = {
               m.content?.trim().length > 0 && INVITE_RE_LOCAL.test(m.content)
             );
             if (adMsg) {
-              adText = adMsg.content.replace(PING_RE_LOCAL, '').replace(/\s{2,}/g, ' ').trim();
+              adText = stripPings(adMsg.content);
             }
           }
         }

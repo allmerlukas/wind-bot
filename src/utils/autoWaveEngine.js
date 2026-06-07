@@ -35,6 +35,7 @@ const setupStore                                   = require('./setupStore');
 const autoWaveStore                                = require('./autoWaveStore');
 const { recordPair, pairedRecently, nextSource }   = require('./pairStore');
 const { isBlacklisted, getWhitelistedDomains }     = require('./blacklistStore');
+const { stripPings }                               = require('./pingStripper');
 const { logError }                                 = require('./errorStore');
 
 const TICK_MS         = 30 * 60 * 1000;
@@ -93,8 +94,8 @@ async function fetchAndCacheAd(guild, cfg) {
 
   if (!adMsg) return null;
 
-  // Strip all @pings before caching
-  const stripped = adMsg.content.replace(PING_RE, '').replace(/\s{2,}/g, ' ').trim();
+  // Note: @mentions are automatically stripped to prevent ping abuse
+  const stripped = stripPings(adMsg.content);
   return stripped || null;
 }
 

@@ -39,6 +39,14 @@ for (const file of eventFiles) {
   console.log(`📡 Registered event: ${event.name}`);
 }
 
+// Global error handlers to prevent crashes
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+
 client.login(process.env.BOT_TOKEN).catch(err => {
   console.error('❌ Failed to login:', err.message);
   process.exit(1);
