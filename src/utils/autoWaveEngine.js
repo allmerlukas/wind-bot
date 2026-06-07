@@ -198,9 +198,21 @@ function validateGuild(guildId, guild, cfg) {
   return null;
 }
 
+let engineRunning = true;
+
+function isEngineRunning() {
+  return engineRunning;
+}
+
+function setEngineState(state) {
+  engineRunning = state;
+}
+
 // ─── Main tick ────────────────────────────────────────────────────────────────
 
 async function tick(client) {
+  if (!engineRunning) return;
+
   try {
     // 1. Collect all guilds passing runtime validation ─────────────────────────
     const configured = [];
@@ -387,4 +399,4 @@ function startAutoWave(client) {
   }, TICK_MS);
 }
 
-module.exports = { startAutoWave, tick };
+module.exports = { startAutoWave, tick, isEngineRunning, setEngineState };

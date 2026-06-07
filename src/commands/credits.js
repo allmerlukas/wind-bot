@@ -23,6 +23,7 @@ module.exports = {
           '',
           '💡 **Inspiration**',
           '> **WaveBot** by **copa** — the original idea for the partner wave system',
+          '> [Join copa\'s server](https://discord.gg/mcfdJUjHJH) to check out WaveBot',
           '',
           '🔧 **Built with**',
           '> [discord.js v14](https://discord.js.org) • [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) • Node.js',

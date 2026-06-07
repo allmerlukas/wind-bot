@@ -2,7 +2,7 @@
  * /help — Comprehensive help command
  *
  * Shows categorized command documentation via a select menu.
- * Categories: Wave, Partner, Auto-Wave Setup, Moderation, Tickets, Admin/Owner
+ * Based on the official Wind Bot documentation.
  */
 
 const {
@@ -16,15 +16,105 @@ const {
 // ─── Category definitions ─────────────────────────────────────────────────────
 
 const CATEGORIES = {
-  wave: {
-    label: '🌊 Wave System',
-    description: 'Store and send server ads in bulk',
+  serversetup: {
+    label: '⚙️ Server Setup',
+    description: 'Set up Wind Bot for your server (admin only)',
+    emoji: '⚙️',
+    color: 0x57F287,
+    fields: [
+      {
+        name: 'Who can set this up?',
+        value: 'A server admin with **Manage Server** permission sets everything up once.',
+      },
+      {
+        name: '/config setup',
+        value: [
+          'Launches a step-by-step setup wizard:',
+          '> 📢 **Partner Channel** — where incoming partner ads get posted',
+          '> 📝 **Ad Channel** — the channel with your server\'s own ad',
+          '> 📋 **Log Channel** — where Wind Bot logs all wave activity',
+          '> 👥 **Member Role** — role held by ≥90% of your members (used for pings)',
+          '> 🔔 **Partner Ping Role** — role pinged on partner arrival (needs ≥10% of members)',
+          '> ⏱️ **Partner Delay** — minimum hours between receiving ads',
+          '> 👥 **Member Range** — only Auto-Wave with servers in this range (e.g. `100-5000`)',
+          '',
+          'Once **Partner Channel** and **Ad Channel** are both set, your server is enrolled in Auto-Wave automatically.',
+        ].join('\n'),
+      },
+      {
+        name: '/config view',
+        value: 'See your current config at any time — shows all settings and enrollment status.',
+      },
+      {
+        name: '/config check',
+        value: '*(Owner only)* See how many servers the bot is in and how many are enrolled in Auto-Wave.',
+      },
+    ],
+  },
+
+  autowave: {
+    label: '🌊 Auto-Wave',
+    description: 'Automatic hands-free partner ad system',
     emoji: '🌊',
     color: 0x5865F2,
     fields: [
       {
+        name: 'How Auto-Wave works',
+        value: [
+          'Every **30 minutes** Wind Bot runs a tick:',
+          '→ Reads the most recent message in your **Ad Channel** that contains a `discord.gg` link',
+          '→ Sends it to another enrolled server',
+          '→ Receives an ad back from a different server',
+          '→ Posts it in your **Partner Channel** with the right ping',
+        ].join('\n'),
+      },
+      {
+        name: '⏱️ Cooldown',
+        value: 'Wind Bot will **not** partner the same two servers again for **3 days** — no spam, no repeats.',
+      },
+      {
+        name: '🔔 Ping Tiers',
+        value: [
+          'Pings are based on the receiving server\'s member count:',
+          '> `< 100` members → No ping',
+          '> `100–499` → @here',
+          '> `500–999` → @here + Partner Ping Role',
+          '> `1,000+` → Member Role',
+        ].join('\n'),
+      },
+      {
+        name: '👥 Member Range Filter',
+        value: [
+          'Set a range like `100-5000` in `/config setup` to only partner with servers of a similar size.',
+          'Your own server\'s member count must also be within the range to qualify.',
+          'Leave it blank to partner with servers of any size.',
+        ].join('\n'),
+      },
+      {
+        name: '📋 Ad Rules',
+        value: [
+          '> ✅ Only Discord invite links allowed (no external URLs)',
+          '> ✅ All @mentions are automatically stripped before sending',
+          '',
+          'Your log channel will tell you if your ad was skipped and why.',
+        ].join('\n'),
+      },
+    ],
+  },
+
+  wave: {
+    label: '📁 Wave Folders',
+    description: 'Save and send partner ads in bulk',
+    emoji: '📁',
+    color: 0x7c5cfc,
+    fields: [
+      {
+        name: 'What are waves?',
+        value: 'Waves are your personal saved collections of partner ads. They are **private** — nobody else can see or access your folders.',
+      },
+      {
         name: '/wave create `name`',
-        value: 'Create a new wave folder to store ads in.',
+        value: 'Create a new wave folder.',
       },
       {
         name: '/wave add `name`',
@@ -32,27 +122,27 @@ const CATEGORIES = {
       },
       {
         name: '/wave remove `name` `number`',
-        value: 'Remove a specific ad by number from a wave folder.',
+        value: 'Remove a specific ad by its number from a folder.',
       },
       {
         name: '/wave list',
-        value: 'List all your wave folders.',
+        value: 'See all your saved wave folders.',
       },
       {
         name: '/wave view `name`',
-        value: 'View all ads stored in a wave folder.',
+        value: 'View all ads stored in a specific folder.',
       },
       {
         name: '/wave paste `name`',
-        value: 'Send all ads in a wave to the current channel (8s delay each).',
-      },
-      {
-        name: '/wave dm `name`',
-        value: 'DM yourself all ads in a wave folder.',
+        value: 'Send all ads in a folder to the current channel with an 8-second delay between each.',
       },
       {
         name: '/wave copy `name`',
-        value: 'Paginate through ads one chunk at a time to copy-paste manually.',
+        value: 'Paginate through ads one chunk at a time to copy-paste yourself.',
+      },
+      {
+        name: '/wave dm `name`',
+        value: 'Send all ads in a folder to your DMs.',
       },
       {
         name: '/wave delete `name`',
@@ -69,19 +159,23 @@ const CATEGORIES = {
     label: '🤝 Partner Manager',
     description: 'Manage and randomise your server partnerships',
     emoji: '🤝',
-    color: 0x7c5cfc,
+    color: 0xf1c40f,
     fields: [
       {
+        name: 'What is this?',
+        value: 'The Partner Manager lets you register all the servers you manage partnerships for, then randomly pair them or do full waves — all tracked with a 2-day cooldown per pair.',
+      },
+      {
         name: '/partner setup `guild_id` `channel_id` `[label]`',
-        value: 'Register the first server you manage partnerships for. `channel_id` = the partner channel **in that server** where you post ads.',
+        value: 'Register your first server. `channel_id` = the partner channel **in that server** where you post ads.',
       },
       {
         name: '/partner add `guild_id` `channel_id` `[label]`',
-        value: 'Add another server to your partner list.',
+        value: 'Add another server to your list.',
       },
       {
         name: '/partner remove `guild_id`',
-        value: 'Remove a server from your partner list.',
+        value: 'Remove a server from your list.',
       },
       {
         name: '/partner list',
@@ -93,48 +187,57 @@ const CATEGORIES = {
       },
       {
         name: '/partner read `guild_id` `[channel_id]`',
-        value: 'Fetch the latest ad from a registered server\'s ad channel. Provide `channel_id` once to save it — the bot remembers it for next time.',
+        value: [
+          'Fetch the latest ad from a registered server\'s ad channel.',
+          'Provide `channel_id` once — Wind Bot saves it and remembers for next time.',
+          'Falls back to your wave folders if the bot isn\'t in that server.',
+        ].join('\n'),
       },
       {
         name: '/partner random',
-        value: 'Pick 2 random servers from your list that haven\'t been partnered in **2 days**. Shows jump links + **Get Ads** button to DM you both ads.',
+        value: [
+          'Pick 2 random servers from your list that haven\'t been partnered in the last **2 days**.',
+          'Shows jump links to both partner channels + buttons:',
+          '> ✅ **Mark as Partnered** — records the pair on cooldown',
+          '> 📋 **Get Ads** — DMs you both ads ready to copy-paste',
+          '> 🔄 **Re-roll** — picks a different pair',
+        ].join('\n'),
       },
       {
         name: '/partner wave',
-        value: 'Pair **all** your servers together at once. If there\'s an odd number you choose which server gets 2 partnerships. Sends all ads to your DMs.',
+        value: [
+          'Pairs **all** your registered servers together at once.',
+          'If there\'s an odd number, you choose which server gets 2 partnerships.',
+          '> 📋 **Get All Ads** — DMs you each pair\'s ads with jump links',
+          '> ✅ **Mark All as Partnered** — records all pairs on 2-day cooldown',
+        ].join('\n'),
       },
     ],
   },
 
-  autowave: {
-    label: '⚙️ Auto-Wave Setup',
-    description: 'Configure automatic partner waves for your server',
-    emoji: '⚙️',
-    color: 0x57F287,
+  tracking: {
+    label: '📊 Partner Tracking',
+    description: 'Track partner links you post',
+    emoji: '📊',
+    color: 0x00b0f4,
     fields: [
       {
-        name: 'What is Auto-Wave?',
-        value: 'Auto-Wave automatically pairs your server with another server every few hours and sends each other\'s ads to your partner channels — fully hands-free.',
+        name: 'How it works',
+        value: 'Wind Bot automatically tracks every `discord.gg` partner link you post in any channel. Your stats are personal — nobody else can see them.',
       },
       {
-        name: '/config setup',
-        value: 'Launch the interactive setup wizard. Sets your partner channel, ad channel, log channel, ping roles and partner delay.',
+        name: '/partners',
+        value: 'See your personal partner stats — total partners, daily count, and your most recent links.',
       },
       {
-        name: '/config view',
-        value: 'View the current Auto-Wave configuration for this server.',
-      },
-      {
-        name: '/config check',
-        value: '*(Owner only)* See how many servers the bot is in and how many are enrolled in Auto-Wave.',
-      },
-      {
-        name: 'Requirements to enroll',
-        value: '• **Partner Channel** — where incoming partner ads get posted\n• **Ad Channel** — where your own server ad lives (bot reads it automatically)\n• Both must be set for Auto-Wave to activate',
-      },
-      {
-        name: 'Cooldown',
-        value: 'Each server pair has a **3-day cooldown** — the same two servers won\'t be matched again for 3 days.',
+        name: 'What Wind Bot stores',
+        value: [
+          '• Your Discord user ID',
+          '• Your saved wave folders and partner list',
+          '• Your partner link history',
+          '',
+          'Nothing is shared. You can ask an admin to delete your data at any time.',
+        ].join('\n'),
       },
     ],
   },
@@ -145,95 +248,52 @@ const CATEGORIES = {
     emoji: '🔨',
     color: 0xED4245,
     fields: [
-      { name: '/ban `user` `[reason]`',           value: 'Ban a member from the server.' },
-      { name: '/unban `user_id`',                  value: 'Unban a previously banned user.' },
-      { name: '/kick `user` `[reason]`',           value: 'Kick a member from the server.' },
-      { name: '/timeout `user` `duration` `[reason]`', value: 'Timeout a member (mute them temporarily).' },
-      { name: '/purge `amount`',                   value: 'Delete up to 100 messages in the current channel.' },
-      { name: '/lock `[channel]`',                 value: 'Lock a channel so members can\'t send messages.' },
-      { name: '/slowmode `seconds`',               value: 'Set slowmode on the current channel.' },
-      { name: '/role `add/remove` `user` `role`',  value: 'Add or remove a role from a member.' },
-      { name: '/warn `user` `reason`',             value: 'Issue a warning to a member (logged).' },
-      { name: '/brig `user` `[duration]`',         value: 'Put a user in the brig (isolated channel).' },
-      { name: '/bend `user`',                      value: 'Release a user from the brig.' },
+      { name: '/ban `user` `[reason]`',                value: 'Ban a member from the server.' },
+      { name: '/unban `user_id`',                       value: 'Unban a previously banned user.' },
+      { name: '/kick `user` `[reason]`',                value: 'Kick a member from the server.' },
+      { name: '/timeout `user` `duration` `[reason]`',  value: 'Timeout a member (mute temporarily).' },
+      { name: '/purge `amount`',                        value: 'Delete up to 100 messages in the current channel.' },
+      { name: '/lock `[channel]`',                      value: 'Lock a channel so members can\'t send messages.' },
+      { name: '/slowmode `seconds`',                    value: 'Set slowmode on the current channel.' },
+      { name: '/role `add/remove` `user` `role`',       value: 'Add or remove a role from a member.' },
+      { name: '/brig `user` `[duration]`',              value: 'Put a user in an isolated brig channel.' },
+      { name: '/bend `user`',                           value: 'Release a user from the brig.' },
     ],
   },
 
   utility: {
-    label: '🛠️ Utility & Info',
-    description: 'General utility commands',
+    label: '🛠️ Utility',
+    description: 'General utility and server tools',
     emoji: '🛠️',
     color: 0xFEE75C,
     fields: [
-      { name: '/ping',                  value: 'Check the bot\'s latency.' },
+      { name: '/ping',                  value: 'Check if Wind Bot is online and its latency.' },
       { name: '/userinfo `[user]`',     value: 'View info about yourself or another user.' },
       { name: '/serverinfo',            value: 'View information about this server.' },
       { name: '/avatar `[user]`',       value: 'View a user\'s avatar in full size.' },
       { name: '/announce `message`',    value: 'Send an announcement embed to a channel.' },
       { name: '/poll `question`',       value: 'Create a poll with up to 4 options.' },
-      { name: '/credits',               value: 'View Wind Bot\'s credits and version.' },
-    ],
-  },
-
-  tickets: {
-    label: '🎫 Tickets',
-    description: 'Ticket system for support',
-    emoji: '🎫',
-    color: 0x00b0f4,
-    fields: [
-      {
-        name: '/ticket setup',
-        value: 'Set up the ticket system — choose a category and support role, then create the panel.',
-      },
-      {
-        name: 'Opening a ticket',
-        value: 'Users click the **Open Ticket** button in the ticket panel to open a private support channel.',
-      },
-      {
-        name: 'Closing a ticket',
-        value: 'Support staff can close tickets using the **Close** button inside the ticket channel.',
-      },
-      {
-        name: '/setup `[option]`',
-        value: 'Server setup wizard — configure welcome messages, auto-role, and other server settings.',
-      },
+      { name: '/setup',                 value: 'Configure welcome messages and autorole for your server.' },
+      { name: '/ticket',                value: 'Set up a support ticket panel for your server.' },
+      { name: '/help',                  value: 'Open this help menu.' },
+      { name: '/credits',               value: 'See who built Wind Bot and the inspiration behind it.' },
     ],
   },
 
   owner: {
-    label: '👑 Owner Commands',
-    description: 'Bot owner / network admin tools',
+    label: '👑 Owner',
+    description: 'Bot owner commands',
     emoji: '👑',
-    color: 0xf1c40f,
+    color: 0x9b59b6,
     fields: [
-      {
-        name: '/owner blacklist add `guild_id`',
-        value: 'Permanently ban a server from the Auto-Wave network.',
-      },
-      {
-        name: '/owner blacklist remove `guild_id`',
-        value: 'Remove a server from the blacklist.',
-      },
-      {
-        name: '/owner blacklist list',
-        value: 'View all blacklisted servers.',
-      },
-      {
-        name: '/owner whitelist add `domain`',
-        value: 'Allow a non-Discord domain to appear in ads (e.g. `twitch.tv`).',
-      },
-      {
-        name: '/owner whitelist remove `domain`',
-        value: 'Remove a domain from the whitelist.',
-      },
-      {
-        name: '/owner whitelist list',
-        value: 'View all whitelisted domains.',
-      },
-      {
-        name: '/config check',
-        value: 'View network stats — total servers, config rows, and enrolled servers.',
-      },
+      { name: '/stop',                  value: 'Toggle the Auto-Wave engine on/off globally.' },
+      { name: '/owner status',          value: 'Show bot stats: uptime, memory, guilds, users.' },
+      { name: '/owner guilds',          value: 'List all servers the bot is in.' },
+      { name: '/owner autowave',        value: 'Show Auto-Wave enrollment across all guilds.' },
+      { name: '/owner broadcast',       value: 'Send a message to every guild\'s log channel.' },
+      { name: '/owner error',           value: 'View the most recent bot errors.' },
+      { name: '/force partner',         value: 'Manually trigger a partnership.' },
+      { name: '/force partnerall',      value: 'Trigger a partnership with all enrolled guilds.' },
     ],
   },
 };
@@ -243,10 +303,10 @@ const CATEGORIES = {
 function buildOverview() {
   return new EmbedBuilder()
     .setColor(0x7c5cfc)
-    .setTitle('📖 Wind Bot — Command Help')
+    .setTitle('📖 Wind Bot — Help')
     .setDescription(
       'Select a category below to see detailed command information.\n\n' +
-      Object.values(CATEGORIES).map(c => `${c.emoji} **${c.label.replace(/^. /, '')}** — ${c.description}`).join('\n')
+      Object.values(CATEGORIES).map(c => `${c.emoji} **${c.label.replace(/^\S+ /, '')}** — ${c.description}`).join('\n')
     )
     .setFooter({ text: 'Wind Bot • Use the menu below to navigate' })
     .setTimestamp();
@@ -258,7 +318,7 @@ function buildCategoryEmbed(key) {
   const cat = CATEGORIES[key];
   return new EmbedBuilder()
     .setColor(cat.color)
-    .setTitle(`${cat.emoji} ${cat.label.replace(/^. /, '')}`)
+    .setTitle(`${cat.emoji} ${cat.label.replace(/^\S+ /, '')}`)
     .setDescription(cat.description)
     .addFields(cat.fields.map(f => ({ name: f.name, value: f.value, inline: false })))
     .setFooter({ text: 'Wind Bot • /help for overview' })

@@ -22,7 +22,7 @@ const GLOBAL_COMMANDS = [
   'purge.js', 'kick.js', 'ban.js', 'unban.js',
   'timeout.js', 'userinfo.js', 'serverinfo.js', 'avatar.js', 'ping.js',
   'ticket.js', 'setup.js', 'lock.js', 'slowmode.js',
-  'announce.js', 'poll.js', 'role.js', 'help.js',
+  'announce.js', 'poll.js', 'role.js', 'help.js', 'stop.js',
   'config.js',   // Auto-Wave configuration
   'credits.js',  // Public credits command
 ];
