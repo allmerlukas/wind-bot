@@ -242,25 +242,6 @@ const CATEGORIES = {
     ],
   },
 
-  moderation: {
-    label: '🔨 Moderation',
-    description: 'Server moderation tools',
-    emoji: '🔨',
-    color: 0xED4245,
-    fields: [
-      { name: '/ban `user` `[reason]`',                value: 'Ban a member from the server.' },
-      { name: '/unban `user_id`',                       value: 'Unban a previously banned user.' },
-      { name: '/kick `user` `[reason]`',                value: 'Kick a member from the server.' },
-      { name: '/timeout `user` `duration` `[reason]`',  value: 'Timeout a member (mute temporarily).' },
-      { name: '/purge `amount`',                        value: 'Delete up to 100 messages in the current channel.' },
-      { name: '/lock `[channel]`',                      value: 'Lock a channel so members can\'t send messages.' },
-      { name: '/slowmode `seconds`',                    value: 'Set slowmode on the current channel.' },
-      { name: '/role `add/remove` `user` `role`',       value: 'Add or remove a role from a member.' },
-      { name: '/brig `user` `[duration]`',              value: 'Put a user in an isolated brig channel.' },
-      { name: '/bend `user`',                           value: 'Release a user from the brig.' },
-    ],
-  },
-
   utility: {
     label: '🛠️ Utility',
     description: 'General utility and server tools',
@@ -273,8 +254,7 @@ const CATEGORIES = {
       { name: '/avatar `[user]`',       value: 'View a user\'s avatar in full size.' },
       { name: '/announce `message`',    value: 'Send an announcement embed to a channel.' },
       { name: '/poll `question`',       value: 'Create a poll with up to 4 options.' },
-      { name: '/setup',                 value: 'Configure welcome messages and autorole for your server.' },
-      { name: '/ticket',                value: 'Set up a support ticket panel for your server.' },
+      { name: '/purge `amount`',        value: 'Delete up to 100 messages in the current channel.' },
       { name: '/help',                  value: 'Open this help menu.' },
       { name: '/credits',               value: 'See who built Wind Bot and the inspiration behind it.' },
     ],
