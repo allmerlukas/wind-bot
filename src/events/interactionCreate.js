@@ -82,11 +82,31 @@ module.exports = {
         const step      = STEPS[stepIndex];
         const channelId = interaction.values[0];
 
+        // Run safety check if defined
+        if (step.checkFn && channelId) {
+          await interaction.deferUpdate();
+          const channel = interaction.guild.channels.cache.get(channelId);
+          const err = await step.checkFn(channel, interaction.guild);
+          if (err) {
+            // Re-show same step with error
+            const msg = buildStepMessage(interaction.guildId, stepIndex);
+            msg.embeds[0] = EmbedBuilder.from(msg.embeds[0]).addFields({ name: '❌ Error', value: err, inline: false });
+            return interaction.editReply(msg);
+          }
+        }
+
         setupStore.set(interaction.guildId, step.storeKey, channelId);
 
         const nextStep = stepIndex + 1;
         if (nextStep >= STEPS.length) {
+          if (interaction.deferred) {
+            return interaction.editReply({ embeds: [buildSummary(interaction.guildId)], components: [] });
+          }
           return interaction.update({ embeds: [buildSummary(interaction.guildId)], components: [] });
+        }
+        
+        if (interaction.deferred) {
+          return interaction.editReply(buildStepMessage(interaction.guildId, nextStep));
         }
         return interaction.update(buildStepMessage(interaction.guildId, nextStep));
       }

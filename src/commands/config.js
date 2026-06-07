@@ -33,6 +33,18 @@ const STEPS = [
     description: 'Select the channel where **incoming** partner ads will be posted.',
     type:        'channel',
     storeKey:    'partnerChannelId',
+    checkFn:     async (channel, guild) => {
+      const perms = guild.members.me.permissionsIn(channel);
+      const missing = [];
+      if (!perms.has('ViewChannel')) missing.push('View Channel');
+      if (!perms.has('SendMessages')) missing.push('Send Messages');
+      if (!perms.has('EmbedLinks')) missing.push('Embed Links');
+      
+      if (missing.length > 0) {
+        return `⚠️ The bot is missing required permissions in <#${channel.id}>:\n**${missing.join(', ')}**\n\nPlease fix the channel permissions and try again.`;
+      }
+      return null;
+    },
   },
   {
     id:          'cfg_ad_channel',
@@ -40,6 +52,17 @@ const STEPS = [
     description: 'Select the channel that contains **your server\'s own ad** (the bot reads the latest message there).',
     type:        'channel',
     storeKey:    'adChannelId',
+    checkFn:     async (channel, guild) => {
+      const perms = guild.members.me.permissionsIn(channel);
+      const missing = [];
+      if (!perms.has('ViewChannel')) missing.push('View Channel');
+      if (!perms.has('ReadMessageHistory')) missing.push('Read Message History');
+      
+      if (missing.length > 0) {
+        return `⚠️ The bot is missing required permissions in <#${channel.id}>:\n**${missing.join(', ')}**\n\nPlease fix the channel permissions and try again.`;
+      }
+      return null;
+    },
   },
   {
     id:          'cfg_log_channel',
@@ -47,6 +70,17 @@ const STEPS = [
     description: 'Select the channel where the bot will log Auto-Wave activity and errors.',
     type:        'channel',
     storeKey:    'logChannelId',
+    checkFn:     async (channel, guild) => {
+      const perms = guild.members.me.permissionsIn(channel);
+      const missing = [];
+      if (!perms.has('ViewChannel')) missing.push('View Channel');
+      if (!perms.has('SendMessages')) missing.push('Send Messages');
+      
+      if (missing.length > 0) {
+        return `⚠️ The bot is missing required permissions in <#${channel.id}>:\n**${missing.join(', ')}**\n\nPlease fix the channel permissions and try again.`;
+      }
+      return null;
+    },
   },
   {
     id:          'cfg_member_role',
