@@ -143,8 +143,21 @@ async function resolvePing(targetGuild, targetCfg) {
   // Nano (<100) — basic, no ping
   if (mc < 100) return '';
 
-  // Small (100–499) — @here
-  if (mc < 500) return '@here';
+  // Small (100–499) — member role if ≥80%, else @here
+  if (mc < 500) {
+    const role = targetGuild.roles.cache.get(targetCfg.memberRoleId);
+    if (role) {
+      const pct = role.members.size / mc;
+      if (pct >= 0.80) return `<@&${role.id}>`;
+      
+      // Log warning for small servers failing the check
+      logToGuild(targetGuild, targetCfg,
+        `⚠️ **Auto-Wave ping warning:** member_role only covers ${Math.round(pct * 100)}% of members ` +
+        `(needs ≥80%). Falling back to @here.`
+      ).catch(() => {});
+    }
+    return '@here';
+  }
 
   // Medium (500–999) — @here + partner ping role (if configured and ≥10%)
   if (mc < 1000) {
@@ -156,18 +169,7 @@ async function resolvePing(targetGuild, targetCfg) {
     return '@here';
   }
 
-  // Large (1000+) — member role if ≥80%, else @here
-  const role = targetGuild.roles.cache.get(targetCfg.memberRoleId);
-  if (role) {
-    const pct = role.members.size / mc;
-    if (pct >= 0.80) return `<@&${role.id}>`;
-
-    // Log the warning but don't expose details to other servers
-    await logToGuild(targetGuild, targetCfg,
-      `⚠️ **Auto-Wave ping warning:** member_role only covers ${Math.round(pct * 100)}% of members ` +
-      `(needs ≥90%). Falling back to @here.`
-    );
-  }
+  // Large (1000+) — @here
   return '@here';
 }
 

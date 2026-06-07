@@ -51,7 +51,7 @@ const STEPS = [
   {
     id:          'cfg_member_role',
     label:       '👥 Member Role',
-    description: 'Select the role held by **≥ 80%** of your members. Used as a ping for servers with 1,000+ members.',
+    description: 'Select the role held by **≥ 80%** of your members. Used as a ping for servers with 100–499 members.',
     type:        'role',
     storeKey:    'memberRoleId',
     checkFn:     async (role, guild) => {
@@ -65,7 +65,7 @@ const STEPS = [
   {
     id:          'cfg_ping_role',
     label:       '🔔 Partner Ping Role',
-    description: 'Select the role pinged when a partner ad arrives (must cover **≥ 10%** of members — enough people to be worth pinging).',
+    description: 'Select the role pinged when a partner ad arrives (must cover **≥ 10%** of members). Used for servers with 500–999 members.',
     type:        'role',
     storeKey:    'partnerPingRoleId',
     checkFn:     async (role, guild) => {
