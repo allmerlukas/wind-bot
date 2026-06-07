@@ -54,6 +54,13 @@ const STEPS = [
     description: 'Select the role held by **≥ 90%** of your members. Used as a ping for servers with 1,000+ members.',
     type:        'role',
     storeKey:    'memberRoleId',
+    checkFn:     async (role, guild) => {
+      await guild.members.fetch();
+      const pct = role.members.size / guild.memberCount;
+      if (pct < 0.90)
+        return `⚠️ **${role.name}** only covers **${Math.round(pct * 100)}%** of members — needs ≥ 90%. Pick a more common role.`;
+      return null;
+    },
   },
   {
     id:          'cfg_ping_role',
@@ -61,6 +68,13 @@ const STEPS = [
     description: 'Select the role pinged when a partner ad arrives (must cover **≥ 10%** of members — enough people to be worth pinging).',
     type:        'role',
     storeKey:    'partnerPingRoleId',
+    checkFn:     async (role, guild) => {
+      await guild.members.fetch();
+      const pct = role.members.size / guild.memberCount;
+      if (pct < 0.10)
+        return `⚠️ **${role.name}** only covers **${Math.round(pct * 100)}%** of members — needs ≥ 10%. Use a bigger role so the ping reaches enough people.`;
+      return null;
+    },
   },
   {
     id:          'cfg_delay_hours',

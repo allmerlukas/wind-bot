@@ -7,6 +7,7 @@ module.exports = {
 
   async execute(interaction) {
     const guild = interaction.guild;
+    await guild.members.fetch(); // ensure member cache is populated
     const owner = await guild.fetchOwner().catch(() => null);
     const createdAt = `<t:${Math.floor(guild.createdTimestamp / 1000)}:D> (<t:${Math.floor(guild.createdTimestamp / 1000)}:R>)`;
 
