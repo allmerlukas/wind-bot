@@ -150,18 +150,18 @@ async function resolvePing(sourceGuild, targetGuild, targetCfg) {
     const role = targetGuild.roles.cache.get(targetCfg.memberRoleId);
     if (role) {
       const pct = role.members.size / targetGuild.memberCount;
-      if (pct >= 0.80) return `[Placeholder for @${role.name} ping]`;
+      if (pct >= 0.80) return `[Placeholder for ${role.name} ping]`;
     }
     tier = 1; // Fallback to Tier 1 if role is missing or fails 80% rule
   }
 
   if (tier === 1) {
-    return '[Placeholder for @here]';
+    return '[Placeholder for here ping]';
   }
 
   if (tier === 2) {
     const role = targetGuild.roles.cache.get(targetCfg.partnerPingRoleId);
-    if (role) return `[Placeholder for @${role.name} ping]`;
+    if (role) return `[Placeholder for ${role.name} ping]`;
     tier = 3; // Fallback to Tier 3 if role is missing
   }
 
