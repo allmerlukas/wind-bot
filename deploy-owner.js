@@ -47,7 +47,8 @@ for (const file of OWNER_COMMANDS) {
   }
 }
 
-const rest = new REST({ version: '10' }).setToken(process.env.BOT_TOKEN);
+const token = process.env.BOT_TOKEN || process.env.DISCORD_TOKEN || process.env.TOKEN;
+const rest = new REST({ version: '10' }).setToken(token);
 
 (async () => {
   try {
