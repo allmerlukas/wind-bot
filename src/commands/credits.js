@@ -19,7 +19,7 @@ module.exports = {
           '**Wind Bot** is a custom Discord bot built for partner management, server automation, and more.',
           '',
           '👤 **Developer**',
-          '> <@' + interaction.client.application.owner?.id + '> — Built and maintained Wind Bot',
+          '> aruvine — Built and maintained Wind Bot',
           '',
           '💡 **Inspiration**',
           '> **WaveBot** by **copa** — the original idea for the partner wave system',
