@@ -48,7 +48,8 @@ process.on('uncaughtException', (err) => {
   console.error('Uncaught Exception:', err);
 });
 
-client.login(process.env.BOT_TOKEN).catch(err => {
+const token = process.env.BOT_TOKEN || process.env.DISCORD_TOKEN || process.env.TOKEN;
+client.login(token).catch(err => {
   console.error('❌ Failed to login:', err.message);
   process.exit(1);
 });

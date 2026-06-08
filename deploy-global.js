@@ -41,13 +41,21 @@ for (const file of GLOBAL_COMMANDS) {
   }
 }
 
-const rest = new REST({ version: '10' }).setToken(process.env.BOT_TOKEN);
+const token = process.env.BOT_TOKEN || process.env.DISCORD_TOKEN || process.env.TOKEN;
+const clientId = process.env.CLIENT_ID;
+
+if (!token || !clientId) {
+  console.error('❌ Missing BOT_TOKEN/DISCORD_TOKEN or CLIENT_ID in .env');
+  process.exit(1);
+}
+
+const rest = new REST({ version: '10' }).setToken(token);
 
 (async () => {
   try {
     console.log(`\n🌍 Deploying ${commands.length} global command(s)...`);
     const data = await rest.put(
-      Routes.applicationCommands(process.env.CLIENT_ID),
+      Routes.applicationCommands(clientId),
       { body: commands }
     );
     console.log(`✅ Successfully deployed ${data.length} global command(s)!`);
