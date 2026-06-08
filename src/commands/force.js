@@ -45,15 +45,15 @@ async function fetchAd(guild, cfg) {
 async function resolvePing(targetGuild, targetCfg) {
   const mc = targetGuild.memberCount;
   if (mc < 100) return '';
-  if (mc < 500) return '@here';
+  if (mc < 500) return '[Placeholder for here ping]';
   if (mc < 1000) {
     const role = targetGuild.roles.cache.get(targetCfg.partnerPingRoleId);
-    if (role && role.members.size / mc >= 0.10) return `@here <@&${role.id}>`;
-    return '@here';
+    if (role && role.members.size / mc >= 0.10) return `[Placeholder for here ping] [Placeholder for ${role.name} ping]`;
+    return '[Placeholder for here ping]';
   }
   const role = targetGuild.roles.cache.get(targetCfg.memberRoleId);
-  if (role && role.members.size / mc >= 0.90) return `<@&${role.id}>`;
-  return '@here';
+  if (role && role.members.size / mc >= 0.90) return `[Placeholder for ${role.name} ping]`;
+  return '[Placeholder for here ping]';
 }
 
 async function sendAdToTarget(sourceGuild, targetGuild, targetCfg, adContent, clientId) {
@@ -66,10 +66,7 @@ async function sendAdToTarget(sourceGuild, targetGuild, targetCfg, adContent, cl
     await ch.send({
       content,
       components: [buildAddBotRow(clientId)],
-      allowedMentions: {
-        parse: ping.includes('@everyone') ? ['everyone'] :
-               ping.includes('@here')     ? ['here']     : ['roles'],
-      },
+      allowedMentions: { parse: [] },
     });
     autoWaveStore.setLastReceived(targetGuild.id);
     recordPair(sourceGuild.id, targetGuild.id);
