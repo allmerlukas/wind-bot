@@ -262,22 +262,7 @@ const CATEGORIES = {
     ],
   },
 
-  owner: {
-    label: '👑 Owner',
-    description: 'Bot owner commands',
-    emoji: '👑',
-    color: 0x9b59b6,
-    fields: [
-      { name: '/stop',                  value: 'Toggle the Auto-Wave engine on/off globally.' },
-      { name: '/owner status',          value: 'Show bot stats: uptime, memory, guilds, users.' },
-      { name: '/owner guilds',          value: 'List all servers the bot is in.' },
-      { name: '/owner autowave',        value: 'Show Auto-Wave enrollment across all guilds.' },
-      { name: '/owner broadcast',       value: 'Send a message to every guild\'s log channel.' },
-      { name: '/owner error',           value: 'View the most recent bot errors.' },
-      { name: '/force partner',         value: 'Manually trigger a partnership.' },
-      { name: '/force partnerall',      value: 'Trigger a partnership with all enrolled guilds.' },
-    ],
-  },
+
 };
 
 // ─── Build overview embed ─────────────────────────────────────────────────────

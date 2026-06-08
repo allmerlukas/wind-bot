@@ -104,15 +104,10 @@ module.exports = {
         )
     )
 
-    // /force partnerall source
+    // /force partnerall
     .addSubcommand(sub =>
       sub.setName('partnerall')
-        .setDescription('Force send one guild\'s ad to ALL other configured guilds right now')
-        .addStringOption(opt =>
-          opt.setName('source')
-            .setDescription('Guild ID whose ad to send everywhere')
-            .setRequired(true)
-        )
+        .setDescription('Force pair ALL enrolled servers right now (ignores cooldowns, respects member sizes)')
     ),
 
   async execute(interaction) {
@@ -158,48 +153,84 @@ module.exports = {
 
     // ── /force partnerall ─────────────────────────────────────────────────────
     if (sub === 'partnerall') {
-      const sourceId = interaction.options.getString('source');
-      const sourceGuild = client.guilds.cache.get(sourceId);
+      const activeGuilds = [];
 
-      if (!sourceGuild) return interaction.editReply(`❌ Source guild \`${sourceId}\` not found — is the bot in that server?`);
-
-      const sourceCfg = setupStore.get(sourceId);
-      if (!sourceCfg.adChannelId) return interaction.editReply(`❌ **${sourceGuild.name}** has no \`ad_channel\` configured.`);
-
-      const ad = await fetchAd(sourceGuild, sourceCfg);
-      if (!ad) return interaction.editReply(`❌ Could not find an ad in **${sourceGuild.name}**'s ad channel.`);
-
-      // Collect all OTHER guilds that have a partner_channel configured
-      const targets = [];
       for (const [guildId, guild] of client.guilds.cache) {
-        if (guildId === sourceId) continue;
         const cfg = setupStore.get(guildId);
-        if (cfg.partnerChannelId) targets.push({ guild, cfg });
+        if (cfg.partnerChannelId && cfg.adChannelId && cfg.logChannelId && cfg.memberRoleId && cfg.partnerPingRoleId) {
+          const ad = await fetchAd(guild, cfg);
+          if (ad) activeGuilds.push({ guild, cfg, guildId, ad });
+        }
       }
 
-      if (targets.length === 0) {
-        return interaction.editReply(`❌ No other guilds have a \`partner_channel\` configured.`);
+      if (activeGuilds.length < 2) {
+        return interaction.editReply(`❌ Not enough fully configured guilds with valid ads to run a mass wave.`);
       }
 
-      const results = { ok: 0, failed: 0, lines: [] };
+      // Shuffle the pool
+      const pool = [...activeGuilds].sort(() => Math.random() - 0.5);
+      const pairs = [];
+      const usedIds = new Set();
 
-      for (const { guild: tGuild, cfg: tCfg } of targets) {
-        const r = await sendAdToTarget(sourceGuild, tGuild, tCfg, ad, client.user.id);
-        if (r.ok) {
+      for (let i = 0; i < pool.length; i++) {
+        const serverA = pool[i];
+        if (usedIds.has(serverA.guildId)) continue;
+
+        let matchedB = null;
+        for (let j = i + 1; j < pool.length; j++) {
+          const serverB = pool[j];
+          if (usedIds.has(serverB.guildId)) continue;
+
+          // Check member bounds
+          const aCount = serverA.guild.memberCount;
+          const bCount = serverB.guild.memberCount;
+          const aMin = serverA.cfg.minMembers ?? null;
+          const aMax = serverA.cfg.maxMembers ?? null;
+          const bMin = serverB.cfg.minMembers ?? null;
+          const bMax = serverB.cfg.maxMembers ?? null;
+
+          let ok = true;
+          if (aMin !== null && aMax !== null && (aCount < aMin || aCount > aMax || bCount < aMin || bCount > aMax)) ok = false;
+          if (bMin !== null && bMax !== null && (bCount < bMin || bCount > bMax || aCount < bMin || aCount > bMax)) ok = false;
+          if (bCount < 25 || aCount < 25) ok = false;
+
+          if (ok) {
+            matchedB = serverB;
+            break;
+          }
+        }
+
+        if (matchedB) {
+          usedIds.add(serverA.guildId);
+          usedIds.add(matchedB.guildId);
+          pairs.push([serverA, matchedB]);
+        }
+      }
+
+      if (pairs.length === 0) {
+        return interaction.editReply(`❌ Checked ${pool.length} guilds but found 0 valid pairs that meet each other's member requirements.`);
+      }
+
+      const results = { ok: 0, lines: [] };
+
+      for (const [srvA, srvB] of pairs) {
+        const r1 = await sendAdToTarget(srvA.guild, srvB.guild, srvB.cfg, srvA.ad, client.user.id);
+        const r2 = await sendAdToTarget(srvB.guild, srvA.guild, srvA.cfg, srvB.ad, client.user.id);
+
+        if (r1.ok && r2.ok) {
           results.ok++;
-          results.lines.push(`✅ **${tGuild.name}** (ping: \`${r.ping || 'none'}\`)`);
+          results.lines.push(`✅ **${srvA.guild.name}** ↔ **${srvB.guild.name}**`);
         } else {
-          results.failed++;
-          results.lines.push(`❌ **${tGuild.name}** — ${r.reason}`);
+          results.lines.push(`⚠️ **${srvA.guild.name}** ↔ **${srvB.guild.name}** (Partial Failure)`);
         }
       }
 
       const embed = new EmbedBuilder()
-        .setColor(results.failed === 0 ? 0x57F287 : 0xFEE75C)
-        .setTitle('🌊 Force Partner All — Results')
+        .setColor(0x57F287)
+        .setTitle('🌊 Force Partner All — Bilateral Results')
         .setDescription(
-          `📤 **Source:** ${sourceGuild.name}\n` +
-          `✅ Sent: **${results.ok}** | ❌ Failed: **${results.failed}**\n\n` +
+          `Analyzed **${pool.length}** active servers.\n` +
+          `Successfully paired **${results.ok * 2}** servers into **${results.ok}** bilateral matches!\n\n` +
           results.lines.join('\n')
         )
         .setTimestamp();
