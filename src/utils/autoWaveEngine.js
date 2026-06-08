@@ -150,18 +150,18 @@ async function resolvePing(sourceGuild, targetGuild, targetCfg) {
     const role = targetGuild.roles.cache.get(targetCfg.memberRoleId);
     if (role) {
       const pct = role.members.size / targetGuild.memberCount;
-      if (pct >= 0.80) return `<@&${role.id}>`;
+      if (pct >= 0.80) return `[Placeholder for @${role.name} ping]`;
     }
     tier = 1; // Fallback to Tier 1 if role is missing or fails 80% rule
   }
 
   if (tier === 1) {
-    return '@here';
+    return '[Placeholder for @here]';
   }
 
   if (tier === 2) {
     const role = targetGuild.roles.cache.get(targetCfg.partnerPingRoleId);
-    if (role) return `<@&${role.id}>`;
+    if (role) return `[Placeholder for @${role.name} ping]`;
     tier = 3; // Fallback to Tier 3 if role is missing
   }
 
@@ -208,179 +208,150 @@ function setEngineState(state) {
   engineRunning = state;
 }
 
+const incompleteDmCache = new Map();
+
 // ─── Main tick ────────────────────────────────────────────────────────────────
 
 async function tick(client) {
   if (!engineRunning) return;
 
   try {
-    // 1. Collect all guilds passing runtime validation ─────────────────────────
-    const configured = [];
+    const now = Date.now();
+    const readyGuilds = [];
 
+    // 1. Collect all guilds passing runtime validation ─────────────────────────
     for (const [guildId, guild] of client.guilds.cache) {
       const cfg    = setupStore.get(guildId);
       const reason = validateGuild(guildId, guild, cfg);
 
       if (reason) {
-        // Only log actionable failures (not blacklist, that's intentional)
-        if (reason !== 'blacklisted' && reason !== 'no_partner_channel' && reason !== 'no_ad_channel') {
-          await logToGuild(guild, cfg,
-            `⚠️ **Auto-Wave:** This server was skipped this tick because a validation check failed. ` +
-            `Please review your /config setup settings.`
-          );
+        if (reason !== 'blacklisted') {
+          if (!cfg.logChannelId) {
+            const lastDm = incompleteDmCache.get(guildId) || 0;
+            if (now - lastDm > 4 * 60 * 60 * 1000) {
+              try {
+                const owner = await client.users.fetch(guild.ownerId);
+                await owner.send(`⚠️ **Wind Bot Auto-Wave:** Your server **${guild.name}** was skipped from the partner network because your \`/config setup\` is incomplete.\nPlease finish the setup in your server to start receiving partners!`);
+                incompleteDmCache.set(guildId, now);
+              } catch { /* ignore */ }
+            }
+          } else if (reason !== 'no_partner_channel' && reason !== 'no_ad_channel') {
+            const lastLog = incompleteDmCache.get(guildId) || 0;
+            if (now - lastLog > 4 * 60 * 60 * 1000) {
+              await logToGuild(guild, cfg, `⚠️ **Auto-Wave:** This server was skipped because your \`/config setup\` is incomplete. Please finish the setup to start receiving partners!`);
+              incompleteDmCache.set(guildId, now);
+            }
+          }
         }
         continue;
       }
 
-      configured.push({ guild, cfg, guildId });
+      // Check per-server cooldown
+      const delayMs = Math.max((cfg.partnerDelayHours ?? 24) * 3_600_000, MIN_COOLDOWN_MS);
+      const lastRecv = autoWaveStore.getLastReceived(guildId);
+
+      if (now - lastRecv >= delayMs) {
+        const rawAd = await fetchAndCacheAd(guild, cfg);
+        if (!rawAd) {
+          await logToGuild(guild, cfg, `⚠️ **Auto-Wave:** No valid ad found in <#${cfg.adChannelId}>. Make sure your most recent message contains a \`discord.gg\` invite link.`);
+          continue;
+        }
+
+        const adReason = validateAd(rawAd);
+        if (adReason) {
+          await logToGuild(guild, cfg, `⚠️ **Auto-Wave:** Your ad was skipped this tick because it failed a content validation check. Check that it only contains server invite links. Non-invite links must be whitelisted.`);
+          continue;
+        }
+
+        readyGuilds.push({ guildId, guild, cfg, rawAd });
+      }
     }
 
-    if (configured.length < 2) return;
+    if (readyGuilds.length < 2) return;
 
-    const activeIds = configured.map(e => e.guildId);
+    // 2. Pick A (source) ──────────────────────────────────────────────────────
+    const sourceIds = readyGuilds.map(g => g.guildId);
+    const sourceId  = nextSource(sourceIds);
+    const serverA   = readyGuilds.find(g => g.guildId === sourceId);
+    if (!serverA) return;
 
-    // 2. Pick source from shuffled queue ──────────────────────────────────────
-    const sourceId    = nextSource(activeIds);
-    const sourceEntry = configured.find(e => e.guildId === sourceId);
-    if (!sourceEntry) return;
+    // 3. Find B (target) ──────────────────────────────────────────────────────
+    const poolB = shuffle(readyGuilds.filter(g => g.guildId !== sourceId));
+    let matchedB = null;
 
-    const { guild: sourceGuild, cfg: sourceCfg } = sourceEntry;
+    for (const serverB of poolB) {
+      if (pairedRecently(serverA.guildId, serverB.guildId)) continue;
 
-    // 3. Cache the ad ─────────────────────────────────────────────────────────
-    const rawAd = await fetchAndCacheAd(sourceGuild, sourceCfg);
+      const aCount = serverA.guild.memberCount;
+      const bCount = serverB.guild.memberCount;
+      const aMin = serverA.cfg.minMembers ?? null;
+      const aMax = serverA.cfg.maxMembers ?? null;
+      const bMin = serverB.cfg.minMembers ?? null;
+      const bMax = serverB.cfg.maxMembers ?? null;
 
-    if (!rawAd) {
-      await logToGuild(sourceGuild, sourceCfg,
-        `⚠️ **Auto-Wave:** No valid ad found in <#${sourceCfg.adChannelId}>. ` +
-        `Make sure your most recent message contains a \`discord.gg\` invite link.`
-      );
+      if (aMin !== null && aMax !== null) {
+        if (aCount < aMin || aCount > aMax || bCount < aMin || bCount > aMax) continue;
+      }
+      if (bMin !== null && bMax !== null) {
+        if (bCount < bMin || bCount > bMax || aCount < bMin || aCount > bMax) continue;
+      }
+
+      if (bCount < MIN_MEMBERS || aCount < MIN_MEMBERS) continue;
+
+      matchedB = serverB;
+      break;
+    }
+
+    if (!matchedB) {
+      await logToGuild(serverA.guild, serverA.cfg, `⏳ **Auto-Wave:** We searched the network, but no eligible partners were found this tick. The network will try again later.`);
       return;
     }
 
-    // Validate ad content (links, length)
-    const adReason = validateAd(rawAd);
-    if (adReason) {
-      await logToGuild(sourceGuild, sourceCfg,
-        `⚠️ **Auto-Wave:** Your ad was skipped this tick because it failed a content validation check. ` +
-        `Check that it only contains server invite links. Non-invite links must be whitelisted.`
-      );
-      logError('AutoWave/AdValidation', new Error(adReason), sourceId);
-      return;
+    // 4. Execute Bilateral Trade ──────────────────────────────────────────────
+    const pingAForB = await resolvePing(serverB.guild, serverA.guild, serverA.cfg);
+    const finalAdB  = pingAForB ? `${serverB.rawAd}\n\n${pingAForB}` : serverB.rawAd;
+
+    const pingBForA = await resolvePing(serverA.guild, matchedB.guild, matchedB.cfg);
+    const finalAdA  = pingBForA ? `${serverA.rawAd}\n\n${pingBForA}` : serverA.rawAd;
+
+    const channelA = serverA.guild.channels.cache.get(serverA.cfg.partnerChannelId);
+    const channelB = matchedB.guild.channels.cache.get(matchedB.cfg.partnerChannelId);
+
+    let successA = false;
+    try {
+      await channelA.send({
+        content: finalAdB,
+        components: [buildAddBotRow(client.user.id)],
+        allowedMentions: { parse: [] }
+      });
+      successA = true;
+    } catch {
+      await logToGuild(serverA.guild, serverA.cfg, `⚠️ **Auto-Wave:** Failed to post incoming partner ad. Check bot permissions in <#${serverA.cfg.partnerChannelId}>.`);
     }
 
-    // 4. Find a valid target ───────────────────────────────────────────────────
-    const now     = Date.now();
-    const targets = shuffle(configured.filter(e => e.guildId !== sourceId));
-    let partnerSent = false;
-
-    // Track skip reasons for the no-match log
-    let skippedCooldown = 0;
-    let skippedMembers  = 0;
-
-    for (const { guild: targetGuild, cfg: targetCfg, guildId: targetId } of targets) {
-
-      // a. Member minimum
-      if (targetGuild.memberCount < MIN_MEMBERS) { skippedMembers++; continue; }
-
-      // b. Member count range filter
-      // If source has a range: BOTH source's own count AND target's count must be within source's range.
-      // If target has a range: BOTH target's own count AND source's count must be within target's range.
-      {
-        const srcMin   = sourceCfg.minMembers ?? null;
-        const srcMax   = sourceCfg.maxMembers ?? null;
-        const tgtMin   = targetCfg.minMembers ?? null;
-        const tgtMax   = targetCfg.maxMembers ?? null;
-        const srcCount = sourceGuild.memberCount;
-        const tgtCount = targetGuild.memberCount;
-
-        if (srcMin !== null && srcMax !== null) {
-          if (srcCount < srcMin || srcCount > srcMax || tgtCount < srcMin || tgtCount > srcMax) {
-            skippedMembers++; continue;
-          }
-        }
-        if (tgtMin !== null && tgtMax !== null) {
-          if (tgtCount < tgtMin || tgtCount > tgtMax || srcCount < tgtMin || srcCount > tgtMax) {
-            skippedMembers++; continue;
-          }
-        }
-      }
-
-      // c. Per-server cooldown
-      const delayMs  = Math.max((targetCfg.partnerDelayHours ?? 24) * 3_600_000, MIN_COOLDOWN_MS);
-      const lastRecv = autoWaveStore.getLastReceived(targetId);
-      if (now - lastRecv < delayMs) { skippedCooldown++; continue; }
-
-      // c. 3-day pair cooldown
-      if (pairedRecently(sourceId, targetId)) {
-        console.log(`[AutoWave] ⏭  ${sourceGuild.name} → ${targetGuild.name}: pair cooldown active`);
-        skippedCooldown++;
-        continue;
-      }
-
-      // 5. Resolve ping and send ─────────────────────────────────────────────
-      const ping        = await resolvePing(sourceGuild, targetGuild, targetCfg);
-      const finalContent = ping ? `${rawAd}\n\n${ping}` : rawAd;
-
-      const partnerChannel = targetGuild.channels.cache.get(targetCfg.partnerChannelId);
-      if (!partnerChannel?.isTextBased()) continue;
-
-      try {
-        await partnerChannel.send({
-          content: finalContent,
-          components: [buildAddBotRow(client.user.id)],
-          allowedMentions: {
-            parse: ping.includes('@everyone') ? ['everyone'] :
-                   ping.includes('@here')     ? ['here']     : ['roles'],
-          },
-        });
-
-        // 6. Record + log ──────────────────────────────────────────────────────
-        recordPair(sourceId, targetId);
-        autoWaveStore.setLastReceived(targetId);
-
-        await logToGuild(sourceGuild, sourceCfg,
-          `✅ **Auto-Wave sent:** Your ad was posted in **${targetGuild.name}** ` +
-          `(<#${targetCfg.partnerChannelId}>) | Ping: \`${ping || 'none'}\``
-        );
-        await logToGuild(targetGuild, targetCfg,
-          `📨 **Auto-Wave received:** Ad from **${sourceGuild.name}** was posted in <#${targetCfg.partnerChannelId}>.`
-        );
-
-        console.log(`[AutoWave] ✅ ${sourceGuild.name} → ${targetGuild.name} (ping: ${ping || 'none'})`);
-        partnerSent = true;
-      } catch (err) {
-        await logToGuild(targetGuild, targetCfg,
-          `⚠️ **Auto-Wave:** An ad was scheduled for your server but could not be delivered. ` +
-          `Please check that Wind Bot has permission to send messages in <#${targetCfg.partnerChannelId}>.`
-        );
-        logError('AutoWave/Send', err, targetId);
-        console.error(`[AutoWave] ❌ Failed → ${targetGuild.name}:`, err.message);
-      }
-
-      break; // one pair per tick
+    let successB = false;
+    try {
+      await channelB.send({
+        content: finalAdA,
+        components: [buildAddBotRow(client.user.id)],
+        allowedMentions: { parse: [] }
+      });
+      successB = true;
+    } catch {
+      await logToGuild(matchedB.guild, matchedB.cfg, `⚠️ **Auto-Wave:** Failed to post incoming partner ad. Check bot permissions in <#${matchedB.cfg.partnerChannelId}>.`);
     }
 
-    // ── No partner found — notify source guild ────────────────────────────────
-    if (!partnerSent) {
-      const total = targets.length;
+    if (!successA && !successB) return;
 
-      let reason;
-      if (total === 0) {
-        reason = 'There are no other servers in the Auto-Wave network yet.';
-      } else if (skippedMembers === total) {
-        reason = `All ${total} network server(s) are below the 25-member minimum.`;
-      } else if (skippedCooldown > 0 && skippedCooldown + skippedMembers >= total) {
-        reason =
-          `All available servers are currently on cooldown (3-day pair limit). ` +
-          `The network will retry next tick. **${skippedCooldown}** server(s) on cooldown.`;
-      } else {
-        reason = `No eligible partner was found this tick (${total} server(s) checked).`;
-      }
+    recordPair(serverA.guildId, matchedB.guildId);
 
-      await logToGuild(sourceGuild, sourceCfg,
-        `⏳ **Auto-Wave:** No partner sent this tick.\n> ${reason}`
-      );
-      console.log(`[AutoWave] ⏳ No partner for ${sourceGuild.name} — ${reason}`);
+    if (successA) {
+      autoWaveStore.setLastReceived(serverA.guildId);
+      await logToGuild(serverA.guild, serverA.cfg, `✅ **Auto-Wave:** You partnered with **${matchedB.guild.name}**! Their ad was posted in <#${serverA.cfg.partnerChannelId}>, and your ad was posted in their server.`);
+    }
+    if (successB) {
+      autoWaveStore.setLastReceived(matchedB.guildId);
+      await logToGuild(matchedB.guild, matchedB.cfg, `✅ **Auto-Wave:** You partnered with **${serverA.guild.name}**! Their ad was posted in <#${matchedB.cfg.partnerChannelId}>, and your ad was posted in their server.`);
     }
 
   } catch (err) {
