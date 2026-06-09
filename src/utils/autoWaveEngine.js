@@ -308,8 +308,8 @@ async function tick(client) {
     }
 
     // 4. Execute Bilateral Trade ──────────────────────────────────────────────
-    const pingAForB = await resolvePing(serverB.guild, serverA.guild, serverA.cfg);
-    const finalAdB  = pingAForB ? `${serverB.rawAd}\n\n${pingAForB}` : serverB.rawAd;
+    const pingAForB = await resolvePing(matchedB.guild, serverA.guild, serverA.cfg);
+    const finalAdB  = pingAForB ? `${matchedB.rawAd}\n\n${pingAForB}` : matchedB.rawAd;
 
     const pingBForA = await resolvePing(serverA.guild, matchedB.guild, matchedB.cfg);
     const finalAdA  = pingBForA ? `${serverA.rawAd}\n\n${pingBForA}` : serverA.rawAd;
