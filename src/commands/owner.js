@@ -116,6 +116,10 @@ module.exports = {
 
     // /owner status
     if (sub === 'status') {
+      await interaction.deferReply({ ephemeral: true });
+
+      await client.application.fetch();
+      
       const uptimeMs  = client.uptime ?? 0;
       const uptimeSec = Math.floor(uptimeMs / 1000);
       const days      = Math.floor(uptimeSec / 86400);
@@ -126,7 +130,7 @@ module.exports = {
 
       const memMB      = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(1);
       const guildCount = client.guilds.cache.size;
-      const userCount  = client.guilds.cache.reduce((a, g) => a + g.memberCount, 0);
+      const userCount  = client.application.approximateUserInstallCount ?? 0;
       const ping       = client.ws.ping;
 
       const embed = new EmbedBuilder()
@@ -143,7 +147,7 @@ module.exports = {
         .setFooter({ text: `Logged in as ${client.user.tag}` })
         .setTimestamp();
 
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      return interaction.editReply({ embeds: [embed] });
     }
 
     // /owner guilds
