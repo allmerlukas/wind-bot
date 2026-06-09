@@ -89,7 +89,7 @@ const STEPS = [
     type:        'role',
     storeKey:    'memberRoleId',
     checkFn:     async (role, guild) => {
-      try { await guild.members.fetch({ time: 5000 }); } catch (e) { console.error('Fetch timeout ignored'); }
+      await guild.members.fetch();
       const pct = role.members.size / guild.memberCount;
       if (pct < 0.80)
         return `⚠️ **${role.name}** only covers **${Math.round(pct * 100)}%** of members — needs ≥ 80%. Pick a more common role.`;
@@ -103,7 +103,7 @@ const STEPS = [
     type:        'role',
     storeKey:    'partnerPingRoleId',
     checkFn:     async (role, guild) => {
-      try { await guild.members.fetch({ time: 5000 }); } catch (e) { console.error('Fetch timeout ignored'); }
+      await guild.members.fetch();
       const pct = role.members.size / guild.memberCount;
       if (pct < 0.10)
         return `⚠️ **${role.name}** only covers **${Math.round(pct * 100)}%** of members — needs ≥ 10%. Use a bigger role so the ping reaches enough people.`;
