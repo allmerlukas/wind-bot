@@ -24,6 +24,7 @@ const db = require('./db');
 // Migration: add new columns if they don't exist (safe on existing databases)
 try { db.prepare('ALTER TABLE guild_config ADD COLUMN min_members INTEGER').run(); } catch {}
 try { db.prepare('ALTER TABLE guild_config ADD COLUMN max_members INTEGER').run(); } catch {}
+try { db.prepare('ALTER TABLE guild_config ADD COLUMN strikes INTEGER DEFAULT 0').run(); } catch {}
 
 const KEY_MAP = {
   welcomeChannelId:  'welcome_channel_id',
@@ -37,6 +38,7 @@ const KEY_MAP = {
   partnerDelayHours: 'partner_delay_hours',
   minMembers:        'min_members',
   maxMembers:        'max_members',
+  strikes:           'strikes',
 };
 
 // Reverse map: column → camelCase
