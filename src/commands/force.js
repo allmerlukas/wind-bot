@@ -63,14 +63,12 @@ async function sendAdToTarget(sourceGuild, targetGuild, targetCfg, adContent, cl
   if (!ch?.isTextBased()) return { ok: false, reason: 'no channel' };
 
   try {
-    await ch.send({
+    const msg = await ch.send({
       content,
       components: [buildAddBotRow(clientId)],
       allowedMentions: { parse: [] },
     });
-    autoWaveStore.setLastReceived(targetGuild.id);
-    recordPair(sourceGuild.id, targetGuild.id);
-    return { ok: true, ping };
+    return { ok: true, ping, msg };
   } catch (err) {
     logError(`Force/Partner→${targetGuild.name}`, err, targetGuild.id);
     return { ok: false, reason: err.message };
@@ -137,6 +135,8 @@ module.exports = {
       const result = await sendAdToTarget(sourceGuild, destGuild, destCfg, ad, client.user.id);
 
       if (result.ok) {
+        autoWaveStore.setLastReceived(destGuild.id);
+        recordPair(sourceGuild.id, destGuild.id);
         return interaction.editReply(
           `✅ **Forced partner sent!**\n` +
           `📤 **From:** ${sourceGuild.name}\n` +
@@ -215,10 +215,17 @@ module.exports = {
         const r2 = await sendAdToTarget(srvB.guild, srvA.guild, srvA.cfg, srvB.ad, client.user.id);
 
         if (r1.ok && r2.ok) {
+          autoWaveStore.setLastReceived(srvA.guild.id);
+          autoWaveStore.setLastReceived(srvB.guild.id);
+          recordPair(srvA.guild.id, srvB.guild.id);
+          recordPair(srvB.guild.id, srvA.guild.id);
           results.ok++;
           results.lines.push(`✅ **${srvA.guild.name}** ↔ **${srvB.guild.name}**`);
         } else {
-          results.lines.push(`⚠️ **${srvA.guild.name}** ↔ **${srvB.guild.name}** (Partial Failure)`);
+          // Rollback if partial failure
+          if (r1.ok && r1.msg) await r1.msg.delete().catch(() => {});
+          if (r2.ok && r2.msg) await r2.msg.delete().catch(() => {});
+          results.lines.push(`⚠️ **${srvA.guild.name}** ↔ **${srvB.guild.name}** (Failed/Rolled back)`);
         }
       }
 

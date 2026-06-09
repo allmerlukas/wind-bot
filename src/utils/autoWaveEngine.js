@@ -318,8 +318,9 @@ async function tick(client) {
     const channelB = matchedB.guild.channels.cache.get(matchedB.cfg.partnerChannelId);
 
     let successA = false;
+    let msgA = null;
     try {
-      await channelA.send({
+      msgA = await channelA.send({
         content: finalAdB,
         components: [buildAddBotRow(client.user.id)],
         allowedMentions: { parse: [] }
@@ -330,8 +331,9 @@ async function tick(client) {
     }
 
     let successB = false;
+    let msgB = null;
     try {
-      await channelB.send({
+      msgB = await channelB.send({
         content: finalAdA,
         components: [buildAddBotRow(client.user.id)],
         allowedMentions: { parse: [] }
@@ -341,17 +343,20 @@ async function tick(client) {
       await logToGuild(matchedB.guild, matchedB.cfg, `⚠️ **Auto-Wave:** Failed to post incoming partner ad. Check bot permissions in <#${matchedB.cfg.partnerChannelId}>.`);
     }
 
-    if (!successA && !successB) return;
-
-    recordPair(serverA.guildId, matchedB.guildId);
-
-    if (successA) {
+    if (successA && successB) {
+      recordPair(serverA.guildId, matchedB.guildId);
       autoWaveStore.setLastReceived(serverA.guildId);
-      await logToGuild(serverA.guild, serverA.cfg, `✅ **Auto-Wave:** You partnered with **${matchedB.guild.name}**! Their ad was posted in <#${serverA.cfg.partnerChannelId}>, and your ad was posted in their server.`);
-    }
-    if (successB) {
       autoWaveStore.setLastReceived(matchedB.guildId);
+      
+      await logToGuild(serverA.guild, serverA.cfg, `✅ **Auto-Wave:** You partnered with **${matchedB.guild.name}**! Their ad was posted in <#${serverA.cfg.partnerChannelId}>, and your ad was posted in their server.`);
       await logToGuild(matchedB.guild, matchedB.cfg, `✅ **Auto-Wave:** You partnered with **${serverA.guild.name}**! Their ad was posted in <#${matchedB.cfg.partnerChannelId}>, and your ad was posted in their server.`);
+    } else {
+      // Rollback any successful ad if the other failed
+      if (successA && msgA) await msgA.delete().catch(() => {});
+      if (successB && msgB) await msgB.delete().catch(() => {});
+      
+      await logToGuild(serverA.guild, serverA.cfg, `⏳ **Auto-Wave:** We found a match (**${matchedB.guild.name}**), but the trade failed due to permission errors on one side. The trade was safely cancelled.`);
+      await logToGuild(matchedB.guild, matchedB.cfg, `⏳ **Auto-Wave:** We found a match (**${serverA.guild.name}**), but the trade failed due to permission errors on one side. The trade was safely cancelled.`);
     }
 
   } catch (err) {
