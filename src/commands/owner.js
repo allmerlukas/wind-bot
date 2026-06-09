@@ -179,12 +179,16 @@ module.exports = {
 
       for (const guild of guilds) {
         const cfg = setupStore.get(guild.id);
-        if (cfg.partnerChannelId && cfg.adChannelId) {
+        if (cfg.partnerChannelId && cfg.adChannelId && cfg.logChannelId && cfg.memberRoleId && cfg.partnerPingRoleId && cfg.partnerDelayHours) {
           enrolled.push(`✅ **${guild.name}** — delay: ${cfg.partnerDelayHours ?? 24}h | members: ${guild.memberCount}`);
         } else {
           const what = [];
           if (!cfg.partnerChannelId) what.push('partner_channel');
           if (!cfg.adChannelId)      what.push('ad_channel');
+          if (!cfg.logChannelId)     what.push('log_channel');
+          if (!cfg.memberRoleId)     what.push('member_role');
+          if (!cfg.partnerPingRoleId) what.push('ping_role');
+          if (!cfg.partnerDelayHours) what.push('delay_hours');
           missing.push(`❌ **${guild.name}** — missing: \`${what.join(', ')}\``);
         }
       }

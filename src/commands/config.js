@@ -43,6 +43,12 @@ const STEPS = [
       if (missing.length > 0) {
         return `⚠️ The bot is missing required permissions in <#${channel.id}>:\n**${missing.join(', ')}**\n\nPlease fix the channel permissions and try again.`;
       }
+
+      const everyonePerms = channel.permissionsFor(guild.roles.everyone);
+      if (!everyonePerms || !everyonePerms.has('ViewChannel')) {
+        return `⚠️ **<#${channel.id}>** is a private channel! Auto-Wave partner ads must be visible to the public. Please select a channel where \`@everyone\` can read messages.`;
+      }
+
       return null;
     },
   },
