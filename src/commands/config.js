@@ -91,16 +91,34 @@ const STEPS = [
   {
     id:          'cfg_member_role',
     label:       '👥 Member Role',
-    description: 'Select the role held by **most** of your members. Used as a ping for servers with 100–499 members.',
+    description: 'Select the role held by **most** of your members (≥90%). Used as a ping for servers with 100–499 members.',
     type:        'role',
     storeKey:    'memberRoleId',
+    checkFn:     async (role, guild) => {
+      const memberCount = guild.memberCount;
+      const roleCount   = role.members.size;
+      const pct         = memberCount > 0 ? roleCount / memberCount : 0;
+      if (pct < 0.90) {
+        return `⚠️ **${role.name}** only has **${roleCount}** members (${Math.round(pct * 100)}% of your server).\nThe Member Role must be held by **at least 90%** of your members — it should be the base role everyone gets when they join.`;
+      }
+      return null;
+    },
   },
   {
     id:          'cfg_ping_role',
     label:       '🔔 Partner Ping Role',
-    description: 'Select the role pinged when a partner ad arrives. Used for servers with 500–999 members.',
+    description: 'Select the role pinged when a partner ad arrives. Must be held by **at least 9%** of your members.',
     type:        'role',
     storeKey:    'partnerPingRoleId',
+    checkFn:     async (role, guild) => {
+      const memberCount = guild.memberCount;
+      const roleCount   = role.members.size;
+      const pct         = memberCount > 0 ? roleCount / memberCount : 0;
+      if (pct < 0.09) {
+        return `⚠️ **${role.name}** only has **${roleCount}** members (${Math.round(pct * 100)}% of your server).\nThe Partner Ping Role must be held by **at least 9%** of your members — it should be a role many people have opted into (e.g. a partner ping or notification role).`;
+      }
+      return null;
+    },
   },
   {
     id:          'cfg_delay_hours',
@@ -330,21 +348,10 @@ module.exports = {
     }
 
 
-    // ── /config setup — resume from first unconfigured step ───────────────────
+    // ── /config setup — always start from step 0 so users can fix any misclick ─
     if (sub === 'setup') {
-      const cfg = await setupStore.get(interaction.guildId);
-
-      // Find the first step that has no value yet
-      let startStep = STEPS.findIndex(s => {
-        const val = cfg[s.storeKey];
-        return val === null || val === undefined;
-      });
-
-      // Everything already filled — restart from 0 so user can change anything
-      if (startStep === -1) startStep = 0;
-
       return interaction.reply({
-        ...await buildStepMessage(interaction.guildId, startStep),
+        ...await buildStepMessage(interaction.guildId, 0),
         ephemeral: true,
       });
     }
