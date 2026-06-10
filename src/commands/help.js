@@ -101,6 +101,16 @@ const CATEGORIES = {
           'Your log channel will tell you if your ad was skipped and why.',
         ].join('\n'),
       },
+      {
+        name: '🛡️ Anti-Scam Strike System',
+        value: [
+          'Wind Bot monitors partner channels for deleted ads:',
+          '> ⚠️ **Strike 1 & 2** — Warning sent to your log channel',
+          '> 🚫 **Strike 3** — Your server is permanently blacklisted from Auto-Wave',
+          '',
+          'Deleting partner ads = scamming the network. Don\'t do it.',
+        ].join('\n'),
+      },
     ],
   },
 
@@ -257,12 +267,60 @@ const CATEGORIES = {
       { name: '/announce `message`',    value: 'Send an announcement embed to a channel.' },
       { name: '/poll `question`',       value: 'Create a poll with up to 4 options.' },
       { name: '/purge `amount`',        value: 'Delete up to 100 messages in the current channel.' },
+      { name: '/stop',                  value: '*(Admin only)* Emergency stop — pauses the Auto-Wave engine immediately.' },
       { name: '/help',                  value: 'Open this help menu.' },
       { name: '/credits',               value: 'See who built Wind Bot and the inspiration behind it.' },
     ],
   },
 
-
+  force: {
+    label: '⚡ Force Tools',
+    description: 'Admin tools to manually trigger waves (owner only)',
+    emoji: '⚡',
+    color: 0xED4245,
+    fields: [
+      {
+        name: 'Who can use these?',
+        value: 'These commands are restricted to the **bot owner** only.',
+      },
+      {
+        name: '/force wave `source_guild_id` `dest_guild_id`',
+        value: 'Manually send a partner ad from one specific server to another, bypassing cooldowns.',
+      },
+      {
+        name: '/force partnerall',
+        value: 'Run a full Auto-Wave tick instantly across all enrolled servers — pairs everyone up right now.',
+      },
+      {
+        name: '/owner autowave',
+        value: 'View full Auto-Wave enrollment status across every server the bot is in.',
+      },
+      {
+        name: '/owner broadcast `message`',
+        value: 'Send a message to every enrolled server\'s log channel.',
+      },
+      {
+        name: '/owner dm_broadcast `message`',
+        value: 'DM a message directly to the owner of every server the bot is in.',
+      },
+      {
+        name: '/owner blacklist-add `guild_id` `reason`',
+        value: 'Permanently ban a server from the Auto-Wave network.',
+      },
+      {
+        name: '/owner blacklist-remove `guild_id`',
+        value: 'Remove a server from the blacklist.',
+      },
+      {
+        name: '/owner blacklist-list',
+        value: 'View all blacklisted servers and whitelisted link domains.',
+      },
+      {
+        name: '/owner error `[count]`',
+        value: 'View the most recent bot errors logged to the database.',
+      },
+    ],
+  },
 };
 
 // ─── Build overview embed ─────────────────────────────────────────────────────
