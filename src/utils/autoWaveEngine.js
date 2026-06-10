@@ -283,11 +283,13 @@ async function tick(client) {
       const bMin = serverB.cfg.minMembers ?? null;
       const bMax = serverB.cfg.maxMembers ?? null;
 
+      // Server A's range preference: filter what B's count must be
       if (aMin !== null && aMax !== null) {
-        if (aCount < aMin || aCount > aMax || bCount < aMin || bCount > aMax) continue;
+        if (bCount < aMin || bCount > aMax) continue;
       }
+      // Server B's range preference: filter what A's count must be
       if (bMin !== null && bMax !== null) {
-        if (bCount < bMin || bCount > bMax || aCount < bMin || aCount > bMax) continue;
+        if (aCount < bMin || aCount > bMax) continue;
       }
 
       if (bCount < MIN_MEMBERS || aCount < MIN_MEMBERS) continue;
