@@ -4,11 +4,14 @@ const { blacklistGuild } = require('../utils/blacklistStore');
 module.exports = {
   name: 'messageDelete',
   async execute(message, client) {
-    // Ignore if not in a guild, or if the message wasn't fully cached
-    if (!message.guild || !message.author) return;
+    // Ignore if not in a guild
+    if (!message.guild) return;
+
+    // If the message is partial (uncached), we can't check the author — skip safely
+    if (message.partial) return;
 
     // Ignore if the deleted message was NOT sent by the bot itself
-    if (message.author.id !== client.user.id) return;
+    if (message.author?.id !== client.user.id) return;
 
     // Get the guild's Auto-Wave configuration
     const cfg = setupStore.get(message.guild.id);

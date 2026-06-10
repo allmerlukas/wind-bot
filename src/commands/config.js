@@ -212,7 +212,7 @@ function buildSummary(guildId) {
     { name: '👥 Member Range',        value: (cfg.minMembers != null && cfg.maxMembers != null) ? `${cfg.minMembers}–${cfg.maxMembers} members` : '`any size`', inline: true },
   ];
 
-  const isReady = cfg.partnerChannelId && cfg.adChannelId;
+  const isReady = cfg.partnerChannelId && cfg.adChannelId && cfg.logChannelId && cfg.memberRoleId && cfg.partnerPingRoleId && cfg.partnerDelayHours;
 
   return new EmbedBuilder()
     .setColor(isReady ? 0x57F287 : 0xFEE75C)
@@ -294,8 +294,11 @@ module.exports = {
       // "Has a config row" = any field was ever set
       const configuredCount = allConfigs.length;
 
-      // "Enrolled" = has at least partnerChannelId AND adChannelId
-      const enrolled = allConfigs.filter(c => c.partnerChannelId && c.adChannelId);
+      // "Enrolled" = has ALL required fields filled
+      const enrolled = allConfigs.filter(c =>
+        c.partnerChannelId && c.adChannelId && c.logChannelId &&
+        c.memberRoleId && c.partnerPingRoleId && c.partnerDelayHours
+      );
       const enrolledCount = enrolled.length;
 
       // Build a list of enrolled server names
@@ -320,7 +323,7 @@ module.exports = {
               : '*None yet*',
           },
         )
-        .setFooter({ text: 'Enrolled = has both partner channel + ad channel set' })
+        .setFooter({ text: 'Enrolled = all 6 required config steps completed' })
         .setTimestamp();
 
       return interaction.reply({ embeds: [embed], ephemeral: true });
