@@ -233,7 +233,7 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('config')
     .setDescription('Configure the Auto-Wave partner system for this server')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
 
     .addSubcommand(sub =>
       sub.setName('setup')

@@ -1,10 +1,11 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 const { getPartners, getAllPartners } = require('../utils/linkTracker');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('partners')
     .setDescription('View partner link stats')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addSubcommand(sub =>
       sub
         .setName('check')

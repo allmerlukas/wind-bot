@@ -3,12 +3,13 @@
  * Shows credits for Wind Bot.
  */
 
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('credits')
-    .setDescription('See who built Wind Bot and the inspiration behind it'),
+    .setDescription('See who built Wind Bot and the inspiration behind it')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   async execute(interaction) {
     const embed = new EmbedBuilder()

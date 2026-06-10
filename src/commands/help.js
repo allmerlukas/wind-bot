@@ -13,6 +13,7 @@ const {
   StringSelectMenuOptionBuilder,
   ApplicationIntegrationType,
   InteractionContextType,
+  PermissionFlagsBits,
 } = require('discord.js');
 
 // ─── Category definitions ─────────────────────────────────────────────────────
@@ -327,6 +328,7 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('help')
     .setDescription('View all Wind Bot commands and how to use them')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .setIntegrationTypes([
       ApplicationIntegrationType.GuildInstall,
       ApplicationIntegrationType.UserInstall,

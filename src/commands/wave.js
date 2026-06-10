@@ -1,5 +1,6 @@
 const {
   SlashCommandBuilder,
+  PermissionFlagsBits,
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
   ActionRowBuilder,
@@ -244,6 +245,7 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('wave')
     .setDescription('Create and paste partner waves in any server')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .setIntegrationTypes([
       ApplicationIntegrationType.GuildInstall,
       ApplicationIntegrationType.UserInstall,

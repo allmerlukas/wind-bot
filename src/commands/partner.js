@@ -22,6 +22,7 @@ const {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
+  PermissionFlagsBits,
 } = require('discord.js');
 
 const pmStore     = require('../utils/pmStore');
@@ -150,7 +151,7 @@ function buildWaveEmbed(pairs, guildsMap, extra = null, doubleGuild = null) {
 
 // ─── Find eligible pair for /partner random ───────────────────────────────────
 
-function findEligiblePair(userId, guilds) {
+async function findEligiblePair(userId, guilds) {
   const shuffled = shuffle(guilds);
   for (let i = 0; i < shuffled.length; i++) {
     for (let j = i + 1; j < shuffled.length; j++) {
@@ -210,6 +211,7 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('partner')
     .setDescription('Personal partner manager — track and randomise your server partnerships')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
 
     .addSubcommand(sub =>
       sub.setName('setup')
@@ -335,7 +337,7 @@ module.exports = {
       if (guilds.length < 2) {
         return interaction.reply({ content: `❌ Need at least **2 guilds**. You have **${guilds.length}**.\nUse \`/partner add\` to register more.`, ephemeral: true });
       }
-      const pair = findEligiblePair(userId, guilds);
+      const pair = await findEligiblePair(userId, guilds);
       if (!pair) {
         return interaction.reply({
           content: `⏳ **All pairs are on cooldown!** Every combination of your ${guilds.length} guilds was partnered in the last 2 days.\nTry again later or add more guilds.`,
@@ -558,7 +560,7 @@ module.exports = {
     // /partner random — re-roll
     if (action === 'pm_reroll') {
       const guilds = await pmStore.getGuilds(userId);
-      const pair   = findEligiblePair(userId, guilds);
+      const pair   = await findEligiblePair(userId, guilds);
       if (!pair) {
         return interaction.update({
           embeds: [
