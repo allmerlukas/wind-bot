@@ -39,7 +39,7 @@ const INVITE_RE = /discord\.gg\/[a-zA-Z0-9-]+|discord\.com\/invite\/[a-zA-Z0-9-]
 
 // Stage 1 — fetch from the guild's configured ad channel
 async function fetchAdFromChannel(client, guildId) {
-  const cfg = setupStore.get(guildId);
+  const cfg = await setupStore.get(guildId);
   if (!cfg?.adChannelId) return null;
   try {
     const guild = client.guilds.cache.get(guildId);
@@ -57,7 +57,7 @@ async function fetchAdFromChannel(client, guildId) {
 
 // Stage 2 — scan user's waves for an ad whose invite resolves to guildId
 async function findAdInWaves(client, userId, guildId) {
-  const userWaves = waveStore.getUserWaves(userId);
+  const userWaves = await waveStore.getUserWaves(userId);
   const allAds    = Object.values(userWaves).flatMap(w => w.ads ?? []);
 
   for (const ad of allAds) {
@@ -156,7 +156,7 @@ function findEligiblePair(userId, guilds) {
     for (let j = i + 1; j < shuffled.length; j++) {
       const a = shuffled[i];
       const b = shuffled[j];
-      if (!pmStore.pairedRecently(userId, a.guild_id, b.guild_id)) {
+      if (!await pmStore.pairedRecently(userId, a.guild_id, b.guild_id)) {
         return [a, b];
       }
     }
@@ -283,10 +283,10 @@ module.exports = {
       if (!/^\d{17,19}$/.test(guildId))   return interaction.reply({ content: '❌ Invalid guild ID.', ephemeral: true });
       if (!/^\d{17,19}$/.test(channelId)) return interaction.reply({ content: '❌ Invalid channel ID.', ephemeral: true });
 
-      const isUpdate    = pmStore.hasGuild(userId, guildId);
-      pmStore.addGuild(userId, guildId, channelId, label);
+      const isUpdate    = await pmStore.hasGuild(userId, guildId);
+      await pmStore.addGuild(userId, guildId, channelId, label);
       const displayName = label ?? `Guild \`${guildId}\``;
-      const total       = pmStore.getGuilds(userId).length;
+      const total       = await pmStore.getGuilds(userId).length;
 
       return interaction.reply({
         content: [
@@ -302,7 +302,7 @@ module.exports = {
     // ── /partner remove ───────────────────────────────────────────────────────
     if (sub === 'remove') {
       const guildId = interaction.options.getString('guild_id');
-      if (!pmStore.removeGuild(userId, guildId)) {
+      if (!await pmStore.removeGuild(userId, guildId)) {
         return interaction.reply({ content: `❌ Guild \`${guildId}\` is not in your list.`, ephemeral: true });
       }
       return interaction.reply({ content: `🗑️ Removed guild \`${guildId}\`.`, ephemeral: true });
@@ -310,7 +310,7 @@ module.exports = {
 
     // ── /partner list ─────────────────────────────────────────────────────────
     if (sub === 'list') {
-      const guilds = pmStore.getGuilds(userId);
+      const guilds = await pmStore.getGuilds(userId);
       if (guilds.length === 0) {
         return interaction.reply({ content: '📭 No guilds registered. Use `/partner setup` to add your first one.', ephemeral: true });
       }
@@ -331,7 +331,7 @@ module.exports = {
 
     // ── /partner random ───────────────────────────────────────────────────────
     if (sub === 'random') {
-      const guilds = pmStore.getGuilds(userId);
+      const guilds = await pmStore.getGuilds(userId);
       if (guilds.length < 2) {
         return interaction.reply({ content: `❌ Need at least **2 guilds**. You have **${guilds.length}**.\nUse \`/partner add\` to register more.`, ephemeral: true });
       }
@@ -352,7 +352,7 @@ module.exports = {
 
     // ── /partner edit ─────────────────────────────────────────────────────────
     if (sub === 'edit') {
-      const guilds = pmStore.getGuilds(userId);
+      const guilds = await pmStore.getGuilds(userId);
 
       if (guilds.length === 0) {
         return interaction.reply({ content: '📭 No guilds registered. Use `/partner setup` to add your first one.', ephemeral: true });
@@ -387,7 +387,7 @@ module.exports = {
       }
 
       // Check it's registered in this user's list
-      const registered = pmStore.getGuild(userId, targetGuildId);
+      const registered = await pmStore.getGuild(userId, targetGuildId);
       if (!registered) {
         return interaction.reply({
           content: `\u274c Guild \`${targetGuildId}\` is not in your partner list. Add it first with \`/partner add\`.`,
@@ -403,7 +403,7 @@ module.exports = {
 
       // If user provided an override channel, save it for next time
       if (overrideChId && overrideChId !== registered.read_channel_id) {
-        pmStore.setReadChannel(userId, targetGuildId, overrideChId);
+        await pmStore.setReadChannel(userId, targetGuildId, overrideChId);
       }
 
       await interaction.deferReply({ ephemeral: true });
@@ -459,7 +459,7 @@ module.exports = {
 
     // ── /partner wave ─────────────────────────────────────────────────────────
     if (sub === 'wave') {
-      const guilds = pmStore.getGuilds(userId);
+      const guilds = await pmStore.getGuilds(userId);
 
       if (guilds.length < 2) {
         return interaction.reply({ content: `❌ Need at least **2 guilds** to run a wave. You have **${guilds.length}**.`, ephemeral: true });
@@ -539,8 +539,8 @@ module.exports = {
     // /partner random — confirm single pair
     if (action === 'pm_confirm') {
       const [, , guildAId, guildBId] = parts;
-      pmStore.recordPair(userId, guildAId, guildBId);
-      const guilds = pmStore.getGuilds(userId);
+      await pmStore.recordPair(userId, guildAId, guildBId);
+      const guilds = await pmStore.getGuilds(userId);
       const g1 = guilds.find(g => g.guild_id === guildAId);
       const g2 = guilds.find(g => g.guild_id === guildBId);
       return interaction.update({
@@ -557,7 +557,7 @@ module.exports = {
 
     // /partner random — re-roll
     if (action === 'pm_reroll') {
-      const guilds = pmStore.getGuilds(userId);
+      const guilds = await pmStore.getGuilds(userId);
       const pair   = findEligiblePair(userId, guilds);
       if (!pair) {
         return interaction.update({
@@ -580,7 +580,7 @@ module.exports = {
     // /partner random — get ads via DM
     if (action === 'pm_getads') {
       const [, , guildAId, guildBId] = parts;
-      const guilds = pmStore.getGuilds(userId);
+      const guilds = await pmStore.getGuilds(userId);
       const g1     = guilds.find(g => g.guild_id === guildAId);
       const g2     = guilds.find(g => g.guild_id === guildBId);
 
@@ -628,7 +628,7 @@ module.exports = {
       }
 
       for (const [a, b] of session.pairs) {
-        pmStore.recordPair(userId, a, b);
+        await pmStore.recordPair(userId, a, b);
       }
 
       waveSessions.delete(userId);
@@ -759,7 +759,7 @@ module.exports = {
       return interaction.reply({ content: '\u274c Invalid channel ID — must be a 17-19 digit number.', ephemeral: true });
     }
 
-    pmStore.addGuild(userId, guildId, newChannelId, newLabel);
+    await pmStore.addGuild(userId, guildId, newChannelId, newLabel);
 
     return interaction.reply({
       content: [

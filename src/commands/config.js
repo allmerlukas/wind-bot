@@ -122,9 +122,9 @@ const STEPS = [
 
 // ─── Helper: build wizard step message ───────────────────────────────────────
 
-function buildStepMessage(guildId, stepIndex) {
+async function buildStepMessage(guildId, stepIndex) {
   const step      = STEPS[stepIndex];
-  const cfg       = setupStore.get(guildId);
+  const cfg       = await setupStore.get(guildId);
   const completed = STEPS.slice(0, stepIndex).map((s, i) => {
     const val = cfg[s.storeKey];
     let display = val ?? '*not set*';
@@ -200,8 +200,8 @@ function buildStepMessage(guildId, stepIndex) {
 
 // ─── Helper: build final summary ─────────────────────────────────────────────
 
-function buildSummary(guildId) {
-  const cfg = setupStore.get(guildId);
+async function buildSummary(guildId) {
+  const cfg = await setupStore.get(guildId);
   const fields = [
     { name: '📢 Partner Channel',   value: cfg.partnerChannelId  ? `<#${cfg.partnerChannelId}>`  : '`not set`', inline: true },
     { name: '📝 Ad Channel',         value: cfg.adChannelId        ? `<#${cfg.adChannelId}>`        : '`not set`', inline: true },
@@ -253,7 +253,7 @@ module.exports = {
 
     // ── /config view ─────────────────────────────────────────────────────────
     if (sub === 'view') {
-      const cfg     = setupStore.get(interaction.guildId);
+      const cfg     = await setupStore.get(interaction.guildId);
       const isReady = cfg.partnerChannelId && cfg.adChannelId && cfg.logChannelId && cfg.memberRoleId && cfg.partnerPingRoleId && cfg.partnerDelayHours;
 
       const embed = new EmbedBuilder()
@@ -289,7 +289,7 @@ module.exports = {
       }
 
       const totalServers  = interaction.client.guilds.cache.size;
-      const allConfigs    = setupStore.getAll();
+      const allConfigs    = await setupStore.getAll();
 
       // "Has a config row" = any field was ever set
       const configuredCount = allConfigs.length;
@@ -332,7 +332,7 @@ module.exports = {
 
     // ── /config setup — resume from first unconfigured step ───────────────────
     if (sub === 'setup') {
-      const cfg = setupStore.get(interaction.guildId);
+      const cfg = await setupStore.get(interaction.guildId);
 
       // Find the first step that has no value yet
       let startStep = STEPS.findIndex(s => {
@@ -344,7 +344,7 @@ module.exports = {
       if (startStep === -1) startStep = 0;
 
       return interaction.reply({
-        ...buildStepMessage(interaction.guildId, startStep),
+        ...await buildStepMessage(interaction.guildId, startStep),
         ephemeral: true,
       });
     }

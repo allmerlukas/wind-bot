@@ -28,13 +28,13 @@ module.exports = {
           return;
         }
 
-        setupStore.set(interaction.guildId, 'partnerDelayHours', Math.max(hours, 1));
+        await setupStore.set(interaction.guildId, 'partnerDelayHours', Math.max(hours, 1));
 
         const nextStep = stepIndex + 1;
         if (nextStep >= STEPS.length) {
-          return interaction.update({ embeds: [buildSummary(interaction.guildId)], components: [] });
+          return interaction.update({ embeds: [await buildSummary(interaction.guildId)], components: [] });
         }
-        return interaction.update(buildStepMessage(interaction.guildId, nextStep));
+        return interaction.update(await buildStepMessage(interaction.guildId, nextStep));
       }
 
       // ── Config wizard: modal submit (member range) ───────────────────────────────
@@ -44,8 +44,8 @@ module.exports = {
 
         if (!raw) {
           // Blank input = clear restriction
-          setupStore.set(interaction.guildId, 'minMembers', null);
-          setupStore.set(interaction.guildId, 'maxMembers', null);
+          await setupStore.set(interaction.guildId, 'minMembers', null);
+          await setupStore.set(interaction.guildId, 'maxMembers', null);
         } else {
           const parts = raw.split('-');
           const minVal = parseInt(parts[0], 10);
@@ -59,15 +59,15 @@ module.exports = {
             return;
           }
 
-          setupStore.set(interaction.guildId, 'minMembers', minVal);
-          setupStore.set(interaction.guildId, 'maxMembers', maxVal);
+          await setupStore.set(interaction.guildId, 'minMembers', minVal);
+          await setupStore.set(interaction.guildId, 'maxMembers', maxVal);
         }
 
         const nextStep = stepIndex + 1;
         if (nextStep >= STEPS.length) {
-          return interaction.update({ embeds: [buildSummary(interaction.guildId)], components: [] });
+          return interaction.update({ embeds: [await buildSummary(interaction.guildId)], components: [] });
         }
-        return interaction.update(buildStepMessage(interaction.guildId, nextStep));
+        return interaction.update(await buildStepMessage(interaction.guildId, nextStep));
       }
 
       // ── Partner edit: modal submit ────────────────────────────────────────────────
@@ -95,20 +95,20 @@ module.exports = {
           }
         }
 
-        setupStore.set(interaction.guildId, step.storeKey, channelId);
+        await setupStore.set(interaction.guildId, step.storeKey, channelId);
 
         const nextStep = stepIndex + 1;
         if (nextStep >= STEPS.length) {
           if (interaction.deferred) {
-            return interaction.editReply({ embeds: [buildSummary(interaction.guildId)], components: [] });
+            return interaction.editReply({ embeds: [await buildSummary(interaction.guildId)], components: [] });
           }
-          return interaction.update({ embeds: [buildSummary(interaction.guildId)], components: [] });
+          return interaction.update({ embeds: [await buildSummary(interaction.guildId)], components: [] });
         }
         
         if (interaction.deferred) {
-          return interaction.editReply(buildStepMessage(interaction.guildId, nextStep));
+          return interaction.editReply(await buildStepMessage(interaction.guildId, nextStep));
         }
-        return interaction.update(buildStepMessage(interaction.guildId, nextStep));
+        return interaction.update(await buildStepMessage(interaction.guildId, nextStep));
       }
 
       // ── Config wizard: role select ────────────────────────────────────────────
@@ -131,16 +131,16 @@ module.exports = {
           }
         }
 
-        setupStore.set(interaction.guildId, step.storeKey, roleId);
+        await setupStore.set(interaction.guildId, step.storeKey, roleId);
 
         const nextStep = stepIndex + 1;
         if (nextStep >= STEPS.length) {
           if (interaction.deferred) {
-            return interaction.editReply({ embeds: [buildSummary(interaction.guildId)], components: [] });
+            return interaction.editReply({ embeds: [await buildSummary(interaction.guildId)], components: [] });
           }
-          return interaction.update({ embeds: [buildSummary(interaction.guildId)], components: [] });
+          return interaction.update({ embeds: [await buildSummary(interaction.guildId)], components: [] });
         }
-        const nextMsg = buildStepMessage(interaction.guildId, nextStep);
+        const nextMsg = await buildStepMessage(interaction.guildId, nextStep);
         if (interaction.deferred) return interaction.editReply(nextMsg);
         return interaction.update(nextMsg);
       }

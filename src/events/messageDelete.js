@@ -14,7 +14,7 @@ module.exports = {
     if (message.author?.id !== client.user.id) return;
 
     // Get the guild's Auto-Wave configuration
-    const cfg = setupStore.get(message.guild.id);
+    const cfg = await setupStore.get(message.guild.id);
 
     // If the server hasn't set up a partner channel, ignore
     if (!cfg.partnerChannelId) return;
@@ -25,7 +25,7 @@ module.exports = {
       const currentStrikes = cfg.strikes || 0;
       const newStrikes = currentStrikes + 1;
       
-      setupStore.set(message.guild.id, 'strikes', newStrikes);
+      await setupStore.set(message.guild.id, 'strikes', newStrikes);
 
       // Attempt to notify their log channel
       let logChannel;

@@ -1,60 +1,64 @@
 /**
- * errorStore.js — Persistent error logger
+ * errorStore.js — Persistent error logger (Supabase)
  *
- * Stores bot errors in the `bot_errors` SQLite table.
- * Keeps a rolling window of the last 200 errors (auto-prunes on insert).
- *
- * Usage:
- *   const { logError } = require('./errorStore');
- *   logError('AutoWave', err, guildId);
+ * Stores bot errors in the `bot_errors` table.
+ * Keeps a rolling window of the last 200 errors.
  */
 
-const db = require('./db');
+const supabase = require('./supabase');
 
 const MAX_ERRORS = 200;
 
-const stmtInsert = db.prepare(`
-  INSERT INTO bot_errors (occurred_at, source, guild_id, message, stack)
-  VALUES (?, ?, ?, ?, ?)
-`);
-const stmtPrune = db.prepare(`
-  DELETE FROM bot_errors
-  WHERE id NOT IN (
-    SELECT id FROM bot_errors ORDER BY id DESC LIMIT ?
-  )
-`);
-const stmtGetRecent = db.prepare(`
-  SELECT * FROM bot_errors ORDER BY id DESC LIMIT ?
-`);
-const stmtCount = db.prepare('SELECT COUNT(*) AS cnt FROM bot_errors');
-
 /**
  * Log an error to the database.
- * @param {string}      source   — where it came from (e.g. 'AutoWave', 'Command:/kick')
- * @param {Error|string} err     — the error object or message string
- * @param {string}      [guildId] — guild context if applicable
+ * Fire-and-forget (non-blocking) — errors in error logging are swallowed.
  */
 function logError(source, err, guildId = null) {
   const message = err instanceof Error ? err.message : String(err);
   const stack   = err instanceof Error ? (err.stack ?? null) : null;
 
-  stmtInsert.run(Date.now(), source, guildId, message, stack);
-  stmtPrune.run(MAX_ERRORS);
+  // Insert then prune — non-blocking, fire-and-forget
+  supabase.from('bot_errors').insert({
+    occurred_at: Date.now(),
+    source,
+    guild_id: guildId,
+    message,
+    stack,
+  }).then(async () => {
+    // Prune: keep only the newest MAX_ERRORS rows
+    const { data } = await supabase
+      .from('bot_errors')
+      .select('id')
+      .order('id', { ascending: false })
+      .range(MAX_ERRORS, MAX_ERRORS + 1000);
+
+    if (data && data.length > 0) {
+      const ids = data.map(r => r.id);
+      await supabase.from('bot_errors').delete().in('id', ids);
+    }
+  }).catch(() => { /* swallow */ });
 }
 
 /**
  * Fetch the most recent errors.
- * @param {number} limit — max number of errors to return (default 20)
  */
-function getRecentErrors(limit = 20) {
-  return stmtGetRecent.all(Math.min(limit, MAX_ERRORS));
+async function getRecentErrors(limit = 20) {
+  const { data } = await supabase
+    .from('bot_errors')
+    .select('*')
+    .order('id', { ascending: false })
+    .limit(Math.min(limit, MAX_ERRORS));
+  return data ?? [];
 }
 
 /**
  * Total number of errors currently stored.
  */
-function getErrorCount() {
-  return stmtCount.get()?.cnt ?? 0;
+async function getErrorCount() {
+  const { count } = await supabase
+    .from('bot_errors')
+    .select('*', { count: 'exact', head: true });
+  return count ?? 0;
 }
 
 module.exports = { logError, getRecentErrors, getErrorCount };

@@ -1,108 +1,85 @@
 /**
- * pmStore.js — Partner Manager store
- *
- * Manages the guilds a user is a partner manager in,
- * and tracks when they last partnered two of those guilds together.
+ * pmStore.js — Partner Manager store (Supabase)
  */
 
-const db = require('./db');
+const supabase = require('./supabase');
 
 const PM_COOLDOWN_MS = 2 * 24 * 60 * 60 * 1000; // 2 days
-
-// ─── Migrate: add read_channel_id if the column doesn't exist yet ─────────────
-try {
-  db.prepare('ALTER TABLE pm_guilds ADD COLUMN read_channel_id TEXT').run();
-} catch { /* column already exists — fine */ }
-
-// ─── Canonical pair key (always smaller ID first) ────────────────────────────
 
 function pairKey(a, b) {
   return a < b ? [a, b] : [b, a];
 }
 
-// ─── Prepared statements ─────────────────────────────────────────────────────
-
-const stmtUpsertGuild = db.prepare(`
-  INSERT INTO pm_guilds (user_id, guild_id, channel_id, read_channel_id, label, added_at)
-  VALUES (?, ?, ?, ?, ?, ?)
-  ON CONFLICT (user_id, guild_id) DO UPDATE SET
-    channel_id      = excluded.channel_id,
-    read_channel_id = COALESCE(excluded.read_channel_id, read_channel_id),
-    label           = excluded.label,
-    added_at        = excluded.added_at
-`);
-
-const stmtSetReadChannel = db.prepare(`
-  UPDATE pm_guilds SET read_channel_id = ? WHERE user_id = ? AND guild_id = ?
-`);
-
-const stmtDeleteGuild = db.prepare(
-  'DELETE FROM pm_guilds WHERE user_id = ? AND guild_id = ?'
-);
-
-const stmtGetGuild = db.prepare(
-  'SELECT * FROM pm_guilds WHERE user_id = ? AND guild_id = ?'
-);
-
-const stmtGetAllGuilds = db.prepare(
-  'SELECT * FROM pm_guilds WHERE user_id = ? ORDER BY added_at ASC'
-);
-
-const stmtUpsertPair = db.prepare(`
-  INSERT INTO pm_pairs (user_id, guild_a, guild_b, last_paired_at)
-  VALUES (?, ?, ?, ?)
-  ON CONFLICT (user_id, guild_a, guild_b) DO UPDATE SET last_paired_at = excluded.last_paired_at
-`);
-
-const stmtGetPair = db.prepare(
-  'SELECT last_paired_at FROM pm_pairs WHERE user_id = ? AND guild_a = ? AND guild_b = ?'
-);
-
-// ─── Guild management ─────────────────────────────────────────────────────────
-
-function addGuild(userId, guildId, channelId, label = null, readChannelId = null) {
-  stmtUpsertGuild.run(userId, guildId, channelId, readChannelId, label, Date.now());
+async function addGuild(userId, guildId, channelId, label = null, readChannelId = null) {
+  await supabase.from('pm_guilds').upsert({
+    user_id:         userId,
+    guild_id:        guildId,
+    channel_id:      channelId,
+    read_channel_id: readChannelId,
+    label,
+    added_at:        Date.now(),
+  }, { onConflict: 'user_id,guild_id' });
 }
 
-function removeGuild(userId, guildId) {
-  const exists = stmtGetGuild.get(userId, guildId);
-  if (!exists) return false;
-  stmtDeleteGuild.run(userId, guildId);
+async function removeGuild(userId, guildId) {
+  const existing = await getGuild(userId, guildId);
+  if (!existing) return false;
+  await supabase.from('pm_guilds').delete().eq('user_id', userId).eq('guild_id', guildId);
   return true;
 }
 
-function getGuilds(userId) {
-  return stmtGetAllGuilds.all(userId);
+async function getGuilds(userId) {
+  const { data } = await supabase
+    .from('pm_guilds')
+    .select('*')
+    .eq('user_id', userId)
+    .order('added_at', { ascending: true });
+  return data ?? [];
 }
 
-function getGuild(userId, guildId) {
-  return stmtGetGuild.get(userId, guildId) ?? null;
+async function getGuild(userId, guildId) {
+  const { data } = await supabase
+    .from('pm_guilds')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('guild_id', guildId)
+    .single();
+  return data ?? null;
 }
 
-function hasGuild(userId, guildId) {
-  return !!stmtGetGuild.get(userId, guildId);
+async function hasGuild(userId, guildId) {
+  return !!(await getGuild(userId, guildId));
 }
 
-/**
- * Sets (or clears) the read_channel_id for a registered guild.
- * read_channel_id = the channel where THEY post their ad (for fetching).
- */
-function setReadChannel(userId, guildId, readChannelId) {
-  stmtSetReadChannel.run(readChannelId, userId, guildId);
+async function setReadChannel(userId, guildId, readChannelId) {
+  await supabase
+    .from('pm_guilds')
+    .update({ read_channel_id: readChannelId })
+    .eq('user_id', userId)
+    .eq('guild_id', guildId);
 }
 
-// ─── Pair cooldown ────────────────────────────────────────────────────────────
-
-function recordPair(userId, guildA, guildB) {
+async function recordPair(userId, guildA, guildB) {
   const [a, b] = pairKey(guildA, guildB);
-  stmtUpsertPair.run(userId, a, b, Date.now());
+  await supabase.from('pm_pairs').upsert({
+    user_id:        userId,
+    guild_a:        a,
+    guild_b:        b,
+    last_paired_at: Date.now(),
+  }, { onConflict: 'user_id,guild_a,guild_b' });
 }
 
-function pairedRecently(userId, guildA, guildB) {
+async function pairedRecently(userId, guildA, guildB) {
   const [a, b] = pairKey(guildA, guildB);
-  const row = stmtGetPair.get(userId, a, b);
-  if (!row) return false;
-  return Date.now() - row.last_paired_at < PM_COOLDOWN_MS;
+  const { data } = await supabase
+    .from('pm_pairs')
+    .select('last_paired_at')
+    .eq('user_id', userId)
+    .eq('guild_a', a)
+    .eq('guild_b', b)
+    .single();
+  if (!data) return false;
+  return Date.now() - data.last_paired_at < PM_COOLDOWN_MS;
 }
 
 module.exports = {

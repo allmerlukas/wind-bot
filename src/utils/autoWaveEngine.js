@@ -103,7 +103,7 @@ async function fetchAndCacheAd(guild, cfg) {
 // Returns null if valid, or an internal reason string if invalid.
 // Reasons are logged to the owner; generic message shown to guild.
 
-function validateAd(adContent) {
+function validateAd(adContent, whitelistedDomains) {
   if (!adContent || adContent.length < 10) return 'ad_too_short';
 
   // Must still contain an invite link after ping stripping
@@ -113,21 +113,14 @@ function validateAd(adContent) {
   const allUrls     = adContent.match(ANY_URL_RE) ?? [];
   const inviteUrls  = adContent.match(INVITE_RE)  ?? [];
 
-  // Any URL that isn't a discord invite is suspicious unless whitelisted
-  const whitelisted = getWhitelistedDomains();
-
   for (const url of allUrls) {
-    // Already an invite link → fine
     if (inviteUrls.some(inv => url.includes(inv.replace(/https?:\/\//i, '')))) continue;
-
-    // Check against whitelist
     const hostname = url.replace(/^https?:\/\//i, '').split('/')[0].toLowerCase();
     const allowed  =
       hostname.includes('discord.gg') ||
       hostname.includes('discord.com') ||
       hostname.includes('discordapp.com') ||
-      whitelisted.some(d => hostname === d || hostname.endsWith('.' + d));
-
+      whitelistedDomains.some(d => hostname === d || hostname.endsWith('.' + d));
     if (!allowed) return `non_whitelisted_link:${hostname}`;
   }
 
@@ -185,7 +178,7 @@ function buildAddBotRow(clientId) {
 // Returns null if ok, or an internal failure code.
 // Intentionally vague in guild-facing messages.
 
-function validateGuild(guildId, guild, cfg) {
+async function validateGuild(guildId, guild, cfg) {
   if (!cfg.partnerChannelId) return 'no_partner_channel';
   if (!cfg.adChannelId)      return 'no_ad_channel';
   if (!cfg.logChannelId)     return 'no_log_channel';
@@ -194,7 +187,7 @@ function validateGuild(guildId, guild, cfg) {
   if (!cfg.partnerDelayHours) return 'no_delay_hours';
   if (!guild.channels.cache.get(cfg.partnerChannelId)?.isTextBased()) return 'partner_channel_inaccessible';
   if (!guild.channels.cache.get(cfg.adChannelId)?.isTextBased())      return 'ad_channel_inaccessible';
-  if (isBlacklisted(guildId))  return 'blacklisted';
+  if (await isBlacklisted(guildId))  return 'blacklisted';
   return null;
 }
 
@@ -221,8 +214,8 @@ async function tick(client) {
 
     // 1. Collect all guilds passing runtime validation ─────────────────────────
     for (const [guildId, guild] of client.guilds.cache) {
-      const cfg    = setupStore.get(guildId);
-      const reason = validateGuild(guildId, guild, cfg);
+      const cfg    = await setupStore.get(guildId);
+      const reason = await validateGuild(guildId, guild, cfg);
 
       if (reason) {
         if (reason !== 'blacklisted') {
@@ -248,7 +241,7 @@ async function tick(client) {
 
       // Check per-server cooldown
       const delayMs = Math.max((cfg.partnerDelayHours ?? 24) * 3_600_000, MIN_COOLDOWN_MS);
-      const lastRecv = autoWaveStore.getLastReceived(guildId);
+      const lastRecv = await autoWaveStore.getLastReceived(guildId);
 
       if (now - lastRecv >= delayMs) {
         const rawAd = await fetchAndCacheAd(guild, cfg);
@@ -257,7 +250,8 @@ async function tick(client) {
           continue;
         }
 
-        const adReason = validateAd(rawAd);
+        const whitelisted = await getWhitelistedDomains();
+        const adReason = validateAd(rawAd, whitelisted);
         if (adReason) {
           await logToGuild(guild, cfg, `⚠️ **Auto-Wave:** Your ad was skipped this tick because it failed a content validation check. Check that it only contains server invite links. Non-invite links must be whitelisted.`);
           continue;
@@ -271,7 +265,7 @@ async function tick(client) {
 
     // 2. Pick A (source) ──────────────────────────────────────────────────────
     const sourceIds = readyGuilds.map(g => g.guildId);
-    const sourceId  = nextSource(sourceIds);
+    const sourceId  = await nextSource(sourceIds);
     const serverA   = readyGuilds.find(g => g.guildId === sourceId);
     if (!serverA) return;
 
@@ -280,7 +274,7 @@ async function tick(client) {
     let matchedB = null;
 
     for (const serverB of poolB) {
-      if (pairedRecently(serverA.guildId, serverB.guildId)) continue;
+      if (await pairedRecently(serverA.guildId, serverB.guildId)) continue;
 
       const aCount = serverA.guild.memberCount;
       const bCount = serverB.guild.memberCount;
@@ -344,9 +338,9 @@ async function tick(client) {
     }
 
     if (successA && successB) {
-      recordPair(serverA.guildId, matchedB.guildId);
-      autoWaveStore.setLastReceived(serverA.guildId);
-      autoWaveStore.setLastReceived(matchedB.guildId);
+      await recordPair(serverA.guildId, matchedB.guildId);
+      await autoWaveStore.setLastReceived(serverA.guildId);
+      await autoWaveStore.setLastReceived(matchedB.guildId);
       
       await logToGuild(serverA.guild, serverA.cfg, `✅ **Auto-Wave:** You partnered with **${matchedB.guild.name}**! Their ad was posted in <#${serverA.cfg.partnerChannelId}>, and your ad was posted in their server.`);
       await logToGuild(matchedB.guild, matchedB.cfg, `✅ **Auto-Wave:** You partnered with **${serverA.guild.name}**! Their ad was posted in <#${matchedB.cfg.partnerChannelId}>, and your ad was posted in their server.`);

@@ -1,37 +1,8 @@
 /**
- * waveStore.js — User partner-ad wave store (SQLite)
- *
- * Replaces data/waves.json.
- * Ads are stored as a JSON-serialized TEXT column since SQLite has no array type.
- * All public functions are synchronous — better-sqlite3 is fully sync.
+ * waveStore.js — User partner-ad wave store (Supabase)
  */
 
-const db = require('./db');
-
-// ─── Prepared statements ─────────────────────────────────────────────────────
-
-const stmtGet = db.prepare(
-  'SELECT * FROM waves WHERE user_id = ? AND name_key = ?'
-);
-const stmtGetAll = db.prepare(
-  'SELECT * FROM waves WHERE user_id = ?'
-);
-const stmtUpsert = db.prepare(`
-  INSERT INTO waves (user_id, name_key, display_name, ads, updated_at)
-  VALUES (?, ?, ?, ?, ?)
-  ON CONFLICT(user_id, name_key) DO UPDATE SET
-    display_name = excluded.display_name,
-    ads          = excluded.ads,
-    updated_at   = excluded.updated_at
-`);
-const stmtDelete = db.prepare(
-  'DELETE FROM waves WHERE user_id = ? AND name_key = ?'
-);
-const stmtDeleteOldKey = db.prepare(
-  'DELETE FROM waves WHERE user_id = ? AND name_key = ?'
-);
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+const supabase = require('./supabase');
 
 function rowToWave(row) {
   if (!row) return null;
@@ -42,57 +13,70 @@ function rowToWave(row) {
   };
 }
 
-// ─── Public API (same as old waveStore) ──────────────────────────────────────
-
-function saveWave(userId, name, ads) {
-  stmtUpsert.run(userId, name.toLowerCase(), name, JSON.stringify(ads), Date.now());
+async function saveWave(userId, name, ads) {
+  await supabase.from('waves').upsert({
+    user_id:      userId,
+    name_key:     name.toLowerCase(),
+    display_name: name,
+    ads:          JSON.stringify(ads),
+    updated_at:   Date.now(),
+  }, { onConflict: 'user_id,name_key' });
 }
 
-function getWave(userId, name) {
-  return rowToWave(stmtGet.get(userId, name.toLowerCase()));
+async function getWave(userId, name) {
+  const { data } = await supabase
+    .from('waves')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('name_key', name.toLowerCase())
+    .single();
+  return rowToWave(data);
 }
 
-function getUserWaves(userId) {
-  const rows = stmtGetAll.all(userId);
-  const out  = {};
-  for (const row of rows) out[row.name_key] = rowToWave(row);
+async function getUserWaves(userId) {
+  const { data } = await supabase
+    .from('waves')
+    .select('*')
+    .eq('user_id', userId);
+  const out = {};
+  for (const row of (data ?? [])) out[row.name_key] = rowToWave(row);
   return out;
 }
 
-function deleteWave(userId, name) {
-  const key    = name.toLowerCase();
-  const exists = stmtGet.get(userId, key);
-  if (!exists) return false;
-  stmtDelete.run(userId, key);
+async function deleteWave(userId, name) {
+  const key = name.toLowerCase();
+  const wave = await getWave(userId, key);
+  if (!wave) return false;
+  await supabase.from('waves').delete().eq('user_id', userId).eq('name_key', key);
   return true;
 }
 
-function renameWave(userId, oldName, newName) {
+async function renameWave(userId, oldName, newName) {
   const oldKey = oldName.toLowerCase();
   const newKey = newName.toLowerCase();
-  const wave   = rowToWave(stmtGet.get(userId, oldKey));
+  const wave   = await getWave(userId, oldKey);
   if (!wave) return false;
 
-  // Upsert under new key
-  stmtUpsert.run(userId, newKey, newName, JSON.stringify(wave.ads), Date.now());
-  // Remove old key (only if different)
-  if (oldKey !== newKey) stmtDeleteOldKey.run(userId, oldKey);
+  await saveWave(userId, newName, wave.ads);
+  if (oldKey !== newKey) {
+    await supabase.from('waves').delete().eq('user_id', userId).eq('name_key', oldKey);
+  }
   return true;
 }
 
-function updateAd(userId, waveName, serverIndex, newAd) {
-  const wave = rowToWave(stmtGet.get(userId, waveName.toLowerCase()));
+async function updateAd(userId, waveName, serverIndex, newAd) {
+  const wave = await getWave(userId, waveName.toLowerCase());
   if (!wave || serverIndex < 0 || serverIndex >= wave.ads.length) return false;
   wave.ads[serverIndex] = newAd;
-  stmtUpsert.run(userId, waveName.toLowerCase(), wave.displayName, JSON.stringify(wave.ads), Date.now());
+  await saveWave(userId, wave.displayName, wave.ads);
   return true;
 }
 
-function insertAd(userId, waveName, spliceIndex, newAd) {
-  const wave = rowToWave(stmtGet.get(userId, waveName.toLowerCase()));
+async function insertAd(userId, waveName, spliceIndex, newAd) {
+  const wave = await getWave(userId, waveName.toLowerCase());
   if (!wave) return false;
   wave.ads.splice(spliceIndex, 0, newAd);
-  stmtUpsert.run(userId, waveName.toLowerCase(), wave.displayName, JSON.stringify(wave.ads), Date.now());
+  await saveWave(userId, wave.displayName, wave.ads);
   return true;
 }
 

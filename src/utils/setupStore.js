@@ -1,30 +1,8 @@
 /**
- * setupStore.js — Guild configuration store (SQLite)
- *
- * Replaces the old flat JSON file at data/setup.json.
- * Preserves the same get(guildId) / set(guildId, key, value) API
- * so no other files need to change.
- *
- * Column mapping (camelCase key → snake_case column):
- *   welcomeChannelId    → welcome_channel_id
- *   welcomeMessage      → welcome_message
- *   autoroleId          → autorole_id
- *   partnerChannelId    → partner_channel_id
- *   adChannelId         → ad_channel_id
- *   logChannelId        → log_channel_id
- *   memberRoleId        → member_role_id
- *   partnerPingRoleId   → partner_ping_role_id
- *   partnerDelayHours   → partner_delay_hours
- *   minMembers          → min_members
- *   maxMembers          → max_members
+ * setupStore.js — Guild configuration store (Supabase)
  */
 
-const db = require('./db');
-
-// Migration: add new columns if they don't exist (safe on existing databases)
-try { db.prepare('ALTER TABLE guild_config ADD COLUMN min_members INTEGER').run(); } catch {}
-try { db.prepare('ALTER TABLE guild_config ADD COLUMN max_members INTEGER').run(); } catch {}
-try { db.prepare('ALTER TABLE guild_config ADD COLUMN strikes INTEGER DEFAULT 0').run(); } catch {}
+const supabase = require('./supabase');
 
 const KEY_MAP = {
   welcomeChannelId:  'welcome_channel_id',
@@ -41,64 +19,47 @@ const KEY_MAP = {
   strikes:           'strikes',
 };
 
-// Reverse map: column → camelCase
 const COL_MAP = Object.fromEntries(Object.entries(KEY_MAP).map(([k, v]) => [v, k]));
 
-const COLUMNS = Object.values(KEY_MAP);
-
-// ─── Prepared statements ─────────────────────────────────────────────────────
-
-const stmtGet = db.prepare('SELECT * FROM guild_config WHERE guild_id = ?');
-
-function ensureRow(guildId) {
-  db.prepare(
-    'INSERT OR IGNORE INTO guild_config (guild_id) VALUES (?)'
-  ).run(guildId);
-}
-
-// ─── Public API ──────────────────────────────────────────────────────────────
-
-/**
- * Returns the full config object for a guild (camelCase keys).
- */
-function get(guildId) {
-  const row = stmtGet.get(guildId);
+function rowToCamel(row) {
   if (!row) return {};
   const out = {};
-  for (const col of COLUMNS) {
-    const camel = COL_MAP[col];
+  for (const [col, camel] of Object.entries(COL_MAP)) {
     if (row[col] !== null && row[col] !== undefined) out[camel] = row[col];
   }
   return out;
 }
 
 /**
- * Sets a single config key for a guild.
- * @param {string} guildId
- * @param {string} key   camelCase key (e.g. 'welcomeChannelId')
- * @param {*}      value
+ * Returns the full config object for a guild (camelCase keys).
  */
-function set(guildId, key, value) {
+async function get(guildId) {
+  const { data } = await supabase
+    .from('guild_config')
+    .select('*')
+    .eq('guild_id', guildId)
+    .single();
+  return rowToCamel(data);
+}
+
+/**
+ * Sets a single config key for a guild.
+ */
+async function set(guildId, key, value) {
   const col = KEY_MAP[key];
   if (!col) throw new Error(`setupStore: unknown key "${key}"`);
-  ensureRow(guildId);
-  db.prepare(`UPDATE guild_config SET ${col} = ? WHERE guild_id = ?`).run(value, guildId);
+
+  await supabase
+    .from('guild_config')
+    .upsert({ guild_id: guildId, [col]: value }, { onConflict: 'guild_id' });
 }
 
 /**
  * Returns configs for ALL guilds that have at least one field set.
- * Used by /config check to count enrolled servers.
  */
-function getAll() {
-  const rows = db.prepare('SELECT * FROM guild_config').all();
-  return rows.map(row => {
-    const out = { guild_id: row.guild_id };
-    for (const col of COLUMNS) {
-      const camel = COL_MAP[col];
-      if (row[col] !== null && row[col] !== undefined) out[camel] = row[col];
-    }
-    return out;
-  });
+async function getAll() {
+  const { data } = await supabase.from('guild_config').select('*');
+  return (data ?? []).map(row => ({ guild_id: row.guild_id, ...rowToCamel(row) }));
 }
 
 module.exports = { get, set, getAll };

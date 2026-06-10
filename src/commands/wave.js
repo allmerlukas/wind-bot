@@ -354,7 +354,7 @@ module.exports = {
     // ── /wave create ──────────────────────────────────────────────────────────
     if (sub === 'create') {
       const name = interaction.options.getString('name');
-      const existing = waveStore.getWave(interaction.user.id, name);
+      const existing = await waveStore.getWave(interaction.user.id, name);
       const editNote = existing
         ? ` Overwriting existing wave (had ${existing.ads?.length ?? 0} servers).`
         : '';
@@ -374,7 +374,7 @@ module.exports = {
     // ── /wave add ─────────────────────────────────────────────────────────────
     if (sub === 'add') {
       const name = interaction.options.getString('name');
-      const wave = waveStore.getWave(interaction.user.id, name);
+      const wave = await waveStore.getWave(interaction.user.id, name);
 
       if (!wave) {
         return interaction.reply({
@@ -400,7 +400,7 @@ module.exports = {
 
     // ── /wave dm ──────────────────────────────────────────────────────────────
     if (sub === 'dm') {
-      const userWaves = waveStore.getUserWaves(interaction.user.id);
+      const userWaves = await waveStore.getUserWaves(interaction.user.id);
       const entries = Object.entries(userWaves);
 
       if (entries.length === 0) {
@@ -435,7 +435,7 @@ module.exports = {
 
     // ── /wave copy ──────────────────────────────────────────────────────────
     if (sub === 'copy') {
-      const userWaves = waveStore.getUserWaves(interaction.user.id);
+      const userWaves = await waveStore.getUserWaves(interaction.user.id);
       const entries = Object.entries(userWaves);
 
       if (entries.length === 0) {
@@ -471,7 +471,7 @@ module.exports = {
 
     // ── /wave paste ───────────────────────────────────────────────────────────
     if (sub === 'paste') {
-      const userWaves = waveStore.getUserWaves(interaction.user.id);
+      const userWaves = await waveStore.getUserWaves(interaction.user.id);
       const entries = Object.entries(userWaves);
 
       if (entries.length === 0) {
@@ -508,7 +508,7 @@ module.exports = {
     if (sub === 'insert') {
       const name = interaction.options.getString('name');
       const afterNum = interaction.options.getInteger('after');
-      const wave = waveStore.getWave(interaction.user.id, name);
+      const wave = await waveStore.getWave(interaction.user.id, name);
 
       if (!wave) {
         return interaction.reply({ content: `❌ No wave named **${name}** found.`, ephemeral: true });
@@ -543,7 +543,7 @@ module.exports = {
     if (sub === 'edit') {
       const name = interaction.options.getString('name');
       const serverNum = interaction.options.getInteger('server');
-      const wave = waveStore.getWave(interaction.user.id, name);
+      const wave = await waveStore.getWave(interaction.user.id, name);
 
       if (!wave) {
         return interaction.reply({ content: `❌ No wave named **${name}** found.`, ephemeral: true });
@@ -578,7 +578,7 @@ module.exports = {
       const name = interaction.options.getString('name');
       const newName = interaction.options.getString('newname');
 
-      if (!waveStore.renameWave(interaction.user.id, name, newName)) {
+      if (!await waveStore.renameWave(interaction.user.id, name, newName)) {
         return interaction.reply({ content: `❌ No wave named **${name}** found.`, ephemeral: true });
       }
 
@@ -587,7 +587,7 @@ module.exports = {
 
     // ── /wave list ────────────────────────────────────────────────────────────
     if (sub === 'list') {
-      const userWaves = waveStore.getUserWaves(interaction.user.id);
+      const userWaves = await waveStore.getUserWaves(interaction.user.id);
       const entries = Object.values(userWaves);
 
       if (entries.length === 0) {
@@ -609,7 +609,7 @@ module.exports = {
     // ── /wave delete ─────────────────────────────────────────────────────────────
     if (sub === 'delete') {
       const name = interaction.options.getString('name');
-      if (!waveStore.deleteWave(interaction.user.id, name)) {
+      if (!await waveStore.deleteWave(interaction.user.id, name)) {
         return interaction.reply({ content: `❌ No wave named **${name}** found.`, ephemeral: true });
       }
       return interaction.reply({ content: `🗑️ Wave **${name}** deleted.`, ephemeral: true });
@@ -619,7 +619,7 @@ module.exports = {
     if (sub === 'remove') {
       const name      = interaction.options.getString('name');
       const serverNum = interaction.options.getInteger('server');
-      const wave      = waveStore.getWave(interaction.user.id, name);
+      const wave      = await waveStore.getWave(interaction.user.id, name);
 
       if (!wave) {
         return interaction.reply({ content: `❌ No wave named **${name}** found.`, ephemeral: true });
@@ -638,7 +638,7 @@ module.exports = {
       const removed  = ads[idx].slice(0, 80).replace(/\n/g, ' ');
       const newAds   = [...ads.slice(0, idx), ...ads.slice(idx + 1)];
 
-      waveStore.saveWave(interaction.user.id, wave.displayName, newAds);
+      await waveStore.saveWave(interaction.user.id, wave.displayName, newAds);
 
       return interaction.reply({
         content: [

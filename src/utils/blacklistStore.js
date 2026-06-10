@@ -1,60 +1,62 @@
 /**
- * blacklistStore.js — Server and link blacklist management
- *
- * blacklisted_guilds — guilds banned from the Auto-Wave network
- * link_whitelist     — extra domains permitted in ads beyond discord.gg
+ * blacklistStore.js — Server and link blacklist management (Supabase)
  */
 
-const db = require('./db');
+const supabase = require('./supabase');
+
+// In-memory cache for whitelist (read often, changes rarely)
+let _whitelistCache = null;
 
 // ─── Guild blacklist ──────────────────────────────────────────────────────────
 
-const stmtBlacklistAdd    = db.prepare(`
-  INSERT OR REPLACE INTO blacklisted_guilds (guild_id, reason, blacklisted_at)
-  VALUES (?, ?, ?)
-`);
-const stmtBlacklistRemove = db.prepare('DELETE FROM blacklisted_guilds WHERE guild_id = ?');
-const stmtBlacklistGet    = db.prepare('SELECT * FROM blacklisted_guilds WHERE guild_id = ?');
-const stmtBlacklistAll    = db.prepare('SELECT * FROM blacklisted_guilds ORDER BY blacklisted_at DESC');
-
-function blacklistGuild(guildId, reason) {
-  stmtBlacklistAdd.run(guildId, reason, Date.now());
+async function blacklistGuild(guildId, reason) {
+  await supabase.from('blacklisted_guilds').upsert(
+    { guild_id: guildId, reason, blacklisted_at: Date.now() },
+    { onConflict: 'guild_id' }
+  );
 }
 
-function unblacklistGuild(guildId) {
-  stmtBlacklistRemove.run(guildId);
+async function unblacklistGuild(guildId) {
+  await supabase.from('blacklisted_guilds').delete().eq('guild_id', guildId);
 }
 
-function isBlacklisted(guildId) {
-  return !!stmtBlacklistGet.get(guildId);
+async function isBlacklisted(guildId) {
+  const { data } = await supabase
+    .from('blacklisted_guilds')
+    .select('guild_id')
+    .eq('guild_id', guildId)
+    .single();
+  return !!data;
 }
 
-function getAllBlacklisted() {
-  return stmtBlacklistAll.all();
+async function getAllBlacklisted() {
+  const { data } = await supabase
+    .from('blacklisted_guilds')
+    .select('*')
+    .order('blacklisted_at', { ascending: false });
+  return data ?? [];
 }
 
 // ─── Link whitelist ───────────────────────────────────────────────────────────
 
-const stmtWhitelistAdd    = db.prepare(`
-  INSERT OR IGNORE INTO link_whitelist (domain, added_at) VALUES (?, ?)
-`);
-const stmtWhitelistRemove = db.prepare('DELETE FROM link_whitelist WHERE domain = ?');
-const stmtWhitelistAll    = db.prepare('SELECT domain FROM link_whitelist');
-
-function addWhitelistedDomain(domain) {
-  // Normalise: strip protocol/path, keep bare domain
+async function addWhitelistedDomain(domain) {
   const bare = domain.replace(/^https?:\/\//i, '').split('/')[0].toLowerCase();
-  stmtWhitelistAdd.run(bare, Date.now());
+  await supabase.from('link_whitelist').upsert({ domain: bare }, { onConflict: 'domain' });
+  _whitelistCache = null; // invalidate cache
   return bare;
 }
 
-function removeWhitelistedDomain(domain) {
+async function removeWhitelistedDomain(domain) {
   const bare = domain.replace(/^https?:\/\//i, '').split('/')[0].toLowerCase();
-  stmtWhitelistRemove.run(bare);
+  await supabase.from('link_whitelist').delete().eq('domain', bare);
+  _whitelistCache = null; // invalidate cache
 }
 
-function getWhitelistedDomains() {
-  return stmtWhitelistAll.all().map(r => r.domain);
+async function getWhitelistedDomains() {
+  if (_whitelistCache) return _whitelistCache;
+  const { data } = await supabase.from('link_whitelist').select('domain');
+  _whitelistCache = (data ?? []).map(r => r.domain);
+  return _whitelistCache;
 }
 
 module.exports = {

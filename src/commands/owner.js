@@ -178,7 +178,7 @@ module.exports = {
       const missing  = [];
 
       for (const guild of guilds) {
-        const cfg = setupStore.get(guild.id);
+        const cfg = await setupStore.get(guild.id);
         if (cfg.partnerChannelId && cfg.adChannelId && cfg.logChannelId && cfg.memberRoleId && cfg.partnerPingRoleId && cfg.partnerDelayHours) {
           enrolled.push(`✅ **${guild.name}** — delay: ${cfg.partnerDelayHours ?? 24}h | members: ${guild.memberCount}`);
         } else {
@@ -215,7 +215,7 @@ module.exports = {
       let sent = 0, failed = 0;
 
       for (const guild of client.guilds.cache.values()) {
-        const cfg = setupStore.get(guild.id);
+        const cfg = await setupStore.get(guild.id);
         if (!cfg.logChannelId) { failed++; continue; }
 
         const ch = guild.channels.cache.get(cfg.logChannelId);
@@ -267,8 +267,9 @@ module.exports = {
     // /owner error
     if (sub === 'error') {
       const count  = interaction.options.getInteger('count') ?? 10;
-      const errors = getRecentErrors(count);
-      const total  = getErrorCount();
+      const { getRecentErrors, getErrorCount } = require('../utils/errorStore');
+      const errors = await getRecentErrors(count);
+      const total  = await getErrorCount();
 
       if (errors.length === 0) {
         return interaction.reply({ content: '✅ No errors logged — all good!', ephemeral: true });
@@ -317,8 +318,8 @@ module.exports = {
 
     // /owner blacklist-list
     if (sub === 'blacklist-list') {
-      const banned   = getAllBlacklisted();
-      const domains  = getWhitelistedDomains();
+      const banned   = await getAllBlacklisted();
+      const domains  = await getWhitelistedDomains();
 
       const bannedLines = banned.length
         ? banned.map(b => {

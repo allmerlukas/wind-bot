@@ -123,8 +123,8 @@ module.exports = {
       if (!sourceGuild) return interaction.editReply(`❌ Source guild \`${sourceId}\` not found — is the bot in that server?`);
       if (!destGuild)   return interaction.editReply(`❌ Destination guild \`${destId}\` not found — is the bot in that server?`);
 
-      const sourceCfg = setupStore.get(sourceId);
-      const destCfg   = setupStore.get(destId);
+      const sourceCfg = await setupStore.get(sourceId);
+      const destCfg   = await setupStore.get(destId);
 
       if (!sourceCfg.adChannelId)      return interaction.editReply(`❌ **${sourceGuild.name}** has no \`ad_channel\` configured. Run \`/config set\` there first.`);
       if (!destCfg.partnerChannelId)   return interaction.editReply(`❌ **${destGuild.name}** has no \`partner_channel\` configured. Run \`/config set\` there first.`);
@@ -135,8 +135,8 @@ module.exports = {
       const result = await sendAdToTarget(sourceGuild, destGuild, destCfg, ad, client.user.id);
 
       if (result.ok) {
-        autoWaveStore.setLastReceived(destGuild.id);
-        recordPair(sourceGuild.id, destGuild.id);
+        await autoWaveStore.setLastReceived(destGuild.id);
+        await recordPair(sourceGuild.id, destGuild.id);
         return interaction.editReply(
           `✅ **Forced partner sent!**\n` +
           `📤 **From:** ${sourceGuild.name}\n` +
@@ -153,7 +153,7 @@ module.exports = {
       const activeGuilds = [];
 
       for (const [guildId, guild] of client.guilds.cache) {
-        const cfg = setupStore.get(guildId);
+        const cfg = await setupStore.get(guildId);
         if (cfg.partnerChannelId && cfg.adChannelId && cfg.logChannelId && cfg.memberRoleId && cfg.partnerPingRoleId) {
           const ad = await fetchAd(guild, cfg);
           if (ad) activeGuilds.push({ guild, cfg, guildId, ad });
