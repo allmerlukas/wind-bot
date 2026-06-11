@@ -4,12 +4,10 @@
 
 const supabase = require('./supabase');
 
-function getTodayKey() {
-  const now = new Date();
-  const y   = now.getFullYear();
-  const m   = String(now.getMonth() + 1).padStart(2, '0');
-  const d   = String(now.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+function getDateKey(offsetDays = 0) {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  return d.toISOString().slice(0, 10); // YYYY-MM-DD
 }
 
 function extractLinks(content) {
@@ -20,11 +18,13 @@ function extractLinks(content) {
 }
 
 /**
- * Tries to add links for a user. Skips links already posted today.
+ * Tries to add links for a user.
+ * Skips links already posted within the last 2 days (today or yesterday).
  * @returns {{ newLinksAdded: number, totalPartners: number }}
  */
 async function addLinks(userId, username, links) {
-  const today = getTodayKey();
+  const today     = getDateKey(0);
+  const yesterday = getDateKey(-1);
 
   // Ensure user exists
   await supabase.from('partner_links').upsert(
@@ -37,17 +37,17 @@ async function addLinks(userId, username, links) {
   let newLinksAdded = 0;
 
   for (const link of links) {
-    // Check if already posted today
+    // Check if already posted today OR yesterday (2-day cooldown)
     const { data: existing } = await supabase
       .from('partner_daily')
       .select('link')
       .eq('user_id', userId)
-      .eq('date_key', today)
+      .in('date_key', [today, yesterday])
       .eq('link', link)
-      .single();
+      .maybeSingle();
 
     if (!existing) {
-      // Insert the daily record
+      // Insert record under today's date key
       const { error } = await supabase.from('partner_daily').insert({ user_id: userId, date_key: today, link });
       if (!error) {
         // Increment total
@@ -65,9 +65,7 @@ async function addLinks(userId, username, links) {
   }
 
   // Prune old daily records (keep last 30 days)
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  const cutoff = thirtyDaysAgo.toISOString().slice(0, 10);
+  const cutoff = getDateKey(-30);
   await supabase.from('partner_daily').delete().eq('user_id', userId).lt('date_key', cutoff);
 
   const { data: row } = await supabase

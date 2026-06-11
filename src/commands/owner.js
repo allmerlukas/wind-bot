@@ -24,6 +24,7 @@ const {
 
 const { checkOwner }    = require('../utils/ownerGuard');
 const setupStore        = require('../utils/setupStore');
+const supabase          = require('../utils/supabase');
 const { getRecentErrors, getErrorCount } = require('../utils/errorStore');
 const {
   blacklistGuild, unblacklistGuild, getAllBlacklisted,
@@ -163,16 +164,22 @@ module.exports = {
       const userCount  = client.application.approximateUserInstallCount ?? 0;
       const ping       = client.ws.ping;
 
+      // Total partnerships ever done across the whole network
+      const { count: totalPartnerships } = await supabase
+        .from('wave_pairs')
+        .select('*', { count: 'exact', head: true });
+
       const embed = new EmbedBuilder()
         .setColor(0x5865F2)
         .setTitle('🤖 Bot Status')
         .addFields(
-          { name: '⏱️ Uptime',      value: uptimeStr,       inline: true },
-          { name: '🏓 Ping',        value: `${ping}ms`,     inline: true },
-          { name: '🧠 Memory',      value: `${memMB} MB`,   inline: true },
-          { name: '🌐 Guilds',      value: `${guildCount}`, inline: true },
-          { name: '👥 Total Users', value: `${userCount}`,  inline: true },
-          { name: '📦 Node.js',     value: process.version, inline: true },
+          { name: '⏱️ Uptime',              value: uptimeStr,                          inline: true },
+          { name: '🏓 Ping',                value: `${ping}ms`,                        inline: true },
+          { name: '🧠 Memory',              value: `${memMB} MB`,                      inline: true },
+          { name: '🌐 Guilds',              value: `${guildCount}`,                    inline: true },
+          { name: '👥 Total Users',         value: `${userCount}`,                     inline: true },
+          { name: '📦 Node.js',             value: process.version,                    inline: true },
+          { name: '🤝 Total Partnerships',  value: `${totalPartnerships ?? 0}`,        inline: true },
         )
         .setFooter({ text: `Logged in as ${client.user.tag}` })
         .setTimestamp();
