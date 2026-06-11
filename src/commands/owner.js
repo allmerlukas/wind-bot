@@ -2,25 +2,55 @@
  * /owner — Owner-only control panel
  *
  * Subcommands:
- *   /owner status    — Bot stats: uptime, memory, guild count, user count
- *   /owner guilds    — List every server the bot is in
- *   /owner autowave  — Show Auto-Wave enrollment across all guilds
- *   /owner broadcast — Send a message to every guild's log_channel
- *   /owner error     — View the most recent bot errors
+ *   /owner status         — Bot stats: uptime, memory, guild count, user count
+ *   /owner guilds         — List every server the bot is in
+ *   /owner autowave       — Show Auto-Wave enrollment across all guilds
+ *   /owner broadcast      — Send to every guild's log channel, DM owner if no log channel
+ *   /owner invite         — Get an invite link from a server (pick from list)
+ *   /owner leave          — Leave a server (pick from list)
+ *   /owner error          — View the most recent bot errors
+ *   /owner blacklist-add  — Ban a guild from Auto-Wave
+ *   /owner blacklist-remove
+ *   /owner blacklist-list
  */
 
 const {
   SlashCommandBuilder,
   EmbedBuilder,
+  ActionRowBuilder,
+  StringSelectMenuBuilder,
+  StringSelectMenuOptionBuilder,
 } = require('discord.js');
 
-const { checkOwner }                     = require('../utils/ownerGuard');
-const setupStore                         = require('../utils/setupStore');
+const { checkOwner }    = require('../utils/ownerGuard');
+const setupStore        = require('../utils/setupStore');
 const { getRecentErrors, getErrorCount } = require('../utils/errorStore');
 const {
   blacklistGuild, unblacklistGuild, getAllBlacklisted,
   addWhitelistedDomain, removeWhitelistedDomain, getWhitelistedDomains,
 } = require('../utils/blacklistStore');
+
+// ─── Helper: build guild select menu (max 25 options) ────────────────────────
+
+function buildGuildMenu(client, customId) {
+  const guilds = [...client.guilds.cache.values()]
+    .sort((a, b) => b.memberCount - a.memberCount)
+    .slice(0, 25);
+
+  return new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(customId)
+      .setPlaceholder('Choose a server...')
+      .addOptions(
+        guilds.map(g =>
+          new StringSelectMenuOptionBuilder()
+            .setLabel(g.name.slice(0, 100))
+            .setDescription(`${g.memberCount} members • ${g.id}`)
+            .setValue(g.id)
+        )
+      )
+  );
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -46,10 +76,10 @@ module.exports = {
         .setDescription('Show Auto-Wave config status across all guilds')
     )
 
-    // broadcast
+    // broadcast (merged — DMs owner if no log channel)
     .addSubcommand(sub =>
       sub.setName('broadcast')
-        .setDescription("Send a message to every guild's log_channel")
+        .setDescription("Send a message to every guild's log channel (auto-DMs owner if no log channel)")
         .addStringOption(opt =>
           opt.setName('message')
             .setDescription('Message to broadcast')
@@ -57,15 +87,16 @@ module.exports = {
         )
     )
 
-    // dm_broadcast
+    // invite
     .addSubcommand(sub =>
-      sub.setName('dm_broadcast')
-        .setDescription("DM a message to every server owner using the bot")
-        .addStringOption(opt =>
-          opt.setName('message')
-            .setDescription('Message to DM')
-            .setRequired(true)
-        )
+      sub.setName('invite')
+        .setDescription('Get an invite link from one of the servers the bot is in')
+    )
+
+    // leave
+    .addSubcommand(sub =>
+      sub.setName('leave')
+        .setDescription('Make the bot leave one of its servers')
     )
 
     // error
@@ -74,7 +105,7 @@ module.exports = {
         .setDescription('View the most recent bot errors')
         .addIntegerOption(opt =>
           opt.setName('count')
-            .setDescription('How many to show (1-20, default 10)')
+            .setDescription('How many to show (1–20, default 10)')
             .setMinValue(1)
             .setMaxValue(20)
             .setRequired(false)
@@ -114,12 +145,11 @@ module.exports = {
     const sub    = interaction.options.getSubcommand();
     const client = interaction.client;
 
-    // /owner status
+    // ── /owner status ─────────────────────────────────────────────────────────
     if (sub === 'status') {
       await interaction.deferReply({ ephemeral: true });
-
       await client.application.fetch();
-      
+
       const uptimeMs  = client.uptime ?? 0;
       const uptimeSec = Math.floor(uptimeMs / 1000);
       const days      = Math.floor(uptimeSec / 86400);
@@ -150,7 +180,7 @@ module.exports = {
       return interaction.editReply({ embeds: [embed] });
     }
 
-    // /owner guilds
+    // ── /owner guilds ─────────────────────────────────────────────────────────
     if (sub === 'guilds') {
       const guilds = [...client.guilds.cache.values()]
         .sort((a, b) => b.memberCount - a.memberCount);
@@ -171,7 +201,7 @@ module.exports = {
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
-    // /owner autowave
+    // ── /owner autowave ───────────────────────────────────────────────────────
     if (sub === 'autowave') {
       const guilds   = [...client.guilds.cache.values()];
       const enrolled = [];
@@ -183,10 +213,10 @@ module.exports = {
           enrolled.push(`✅ **${guild.name}** — delay: ${cfg.partnerDelayHours ?? 24}h | members: ${guild.memberCount}`);
         } else {
           const what = [];
-          if (!cfg.partnerChannelId) what.push('partner_channel');
-          if (!cfg.adChannelId)      what.push('ad_channel');
-          if (!cfg.logChannelId)     what.push('log_channel');
-          if (!cfg.memberRoleId)     what.push('member_role');
+          if (!cfg.partnerChannelId)  what.push('partner_channel');
+          if (!cfg.adChannelId)       what.push('ad_channel');
+          if (!cfg.logChannelId)      what.push('log_channel');
+          if (!cfg.memberRoleId)      what.push('member_role');
           if (!cfg.partnerPingRoleId) what.push('ping_role');
           if (!cfg.partnerDelayHours) what.push('delay_hours');
           missing.push(`❌ **${guild.name}** — missing: \`${what.join(', ')}\``);
@@ -207,67 +237,74 @@ module.exports = {
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
-    // /owner broadcast
+    // ── /owner broadcast (merged — falls back to DM if no log channel) ────────
     if (sub === 'broadcast') {
       const message = interaction.options.getString('message');
       await interaction.deferReply({ ephemeral: true });
 
-      let sent = 0, failed = 0;
+      let sentLog = 0, sentDm = 0, failed = 0;
 
       for (const guild of client.guilds.cache.values()) {
         const cfg = await setupStore.get(guild.id);
-        if (!cfg.logChannelId) { failed++; continue; }
+        const ch  = cfg.logChannelId ? guild.channels.cache.get(cfg.logChannelId) : null;
 
-        const ch = guild.channels.cache.get(cfg.logChannelId);
-        if (!ch?.isTextBased()) { failed++; continue; }
-
-        try {
-          await ch.send(`📢 **[Owner Broadcast]**\n${message}`);
-          sent++;
-        } catch {
-          failed++;
+        if (ch?.isTextBased()) {
+          // Try log channel first
+          try {
+            await ch.send(`📢 **[Owner Broadcast]**\n${message}`);
+            sentLog++;
+          } catch {
+            // Log channel failed — fall back to DM
+            try {
+              const owner = await client.users.fetch(guild.ownerId);
+              await owner.send(`📢 **[Wind Bot Broadcast]** *(from ${guild.name})*\n${message}`);
+              sentDm++;
+            } catch { failed++; }
+          }
+        } else {
+          // No log channel — DM the server owner
+          try {
+            const owner = await client.users.fetch(guild.ownerId);
+            await owner.send(`📢 **[Wind Bot Broadcast]** *(from ${guild.name})*\n${message}`);
+            sentDm++;
+          } catch { failed++; }
         }
       }
 
       return interaction.editReply({
-        content: `📢 Broadcast complete.\n✅ Sent to **${sent}** guilds | ❌ Failed/no log channel: **${failed}** guilds`,
+        content: `📢 **Broadcast complete.**\n✅ Log channel: **${sentLog}** | 📩 DM fallback: **${sentDm}** | ❌ Failed: **${failed}**`,
       });
     }
 
-    // /owner dm_broadcast
-    if (sub === 'dm_broadcast') {
-      const message = interaction.options.getString('message');
-      await interaction.deferReply({ ephemeral: true });
-
-      const ownerIds = new Set();
-      for (const guild of client.guilds.cache.values()) {
-        if (guild.ownerId) ownerIds.add(guild.ownerId);
+    // ── /owner invite ─────────────────────────────────────────────────────────
+    if (sub === 'invite') {
+      if (client.guilds.cache.size === 0) {
+        return interaction.reply({ content: '❌ The bot is not in any servers.', ephemeral: true });
       }
 
-      let sent = 0, failed = 0;
-      let isFirst = true;
-      for (const ownerId of ownerIds) {
-        if (!isFirst) await new Promise(r => setTimeout(r, 5000));
-        isFirst = false;
-
-        try {
-          const user = await client.users.fetch(ownerId);
-          await user.send(`📢 **[Wind Bot Update]**\n${message}`);
-          sent++;
-        } catch {
-          failed++;
-        }
-      }
-
-      return interaction.editReply({
-        content: `📢 DM Broadcast complete.\n✅ Sent to **${sent}** owners | ❌ Failed (DMs off): **${failed}** owners`,
+      return interaction.reply({
+        content: '🔗 **Select a server to generate an invite link:**',
+        components: [buildGuildMenu(client, 'owner_invite_select')],
+        ephemeral: true,
       });
     }
 
-    // /owner error
+    // ── /owner leave ──────────────────────────────────────────────────────────
+    if (sub === 'leave') {
+      if (client.guilds.cache.size === 0) {
+        return interaction.reply({ content: '❌ The bot is not in any servers.', ephemeral: true });
+      }
+
+      return interaction.reply({
+        content: '👋 **Select the server you want the bot to leave:**',
+        components: [buildGuildMenu(client, 'owner_leave_select')],
+        ephemeral: true,
+      });
+    }
+
+    // ── /owner error ──────────────────────────────────────────────────────────
     if (sub === 'error') {
       const count  = interaction.options.getInteger('count') ?? 10;
-      const { getRecentErrors, getErrorCount } = require('../utils/errorStore');
       const errors = await getRecentErrors(count);
       const total  = await getErrorCount();
 
@@ -293,11 +330,11 @@ module.exports = {
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
-    // /owner blacklist-add
+    // ── /owner blacklist-add ──────────────────────────────────────────────────
     if (sub === 'blacklist-add') {
       const guildId = interaction.options.getString('guild_id');
       const reason  = interaction.options.getString('reason');
-      blacklistGuild(guildId, reason);
+      await blacklistGuild(guildId, reason);
       const name = client.guilds.cache.get(guildId)?.name ?? `\`${guildId}\``;
       return interaction.reply({
         content: `🚫 **${name}** has been blacklisted from Auto-Wave.\n> Reason: ${reason}`,
@@ -305,10 +342,10 @@ module.exports = {
       });
     }
 
-    // /owner blacklist-remove
+    // ── /owner blacklist-remove ───────────────────────────────────────────────
     if (sub === 'blacklist-remove') {
       const guildId = interaction.options.getString('guild_id');
-      unblacklistGuild(guildId);
+      await unblacklistGuild(guildId);
       const name = client.guilds.cache.get(guildId)?.name ?? `\`${guildId}\``;
       return interaction.reply({
         content: `✅ **${name}** has been removed from the blacklist.`,
@@ -316,10 +353,10 @@ module.exports = {
       });
     }
 
-    // /owner blacklist-list
+    // ── /owner blacklist-list ─────────────────────────────────────────────────
     if (sub === 'blacklist-list') {
-      const banned   = await getAllBlacklisted();
-      const domains  = await getWhitelistedDomains();
+      const banned  = await getAllBlacklisted();
+      const domains = await getWhitelistedDomains();
 
       const bannedLines = banned.length
         ? banned.map(b => {
@@ -336,8 +373,8 @@ module.exports = {
         .setColor(0xED4245)
         .setTitle('🚫 Blacklist & Whitelist')
         .addFields(
-          { name: `Blacklisted Guilds (${banned.length})`,   value: bannedLines.slice(0, 1000),  inline: false },
-          { name: `Whitelisted Link Domains (${domains.length})`, value: domainLines.slice(0, 1000), inline: false },
+          { name: `Blacklisted Guilds (${banned.length})`,        value: bannedLines.slice(0, 1000),  inline: false },
+          { name: `Whitelisted Link Domains (${domains.length})`, value: domainLines.slice(0, 1000),  inline: false },
         )
         .setTimestamp();
 
@@ -345,4 +382,3 @@ module.exports = {
     }
   },
 };
-

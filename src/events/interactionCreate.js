@@ -343,6 +343,51 @@ module.exports = {
       }
     }
 
+    // ── /owner invite — select menu response ─────────────────────────────────
+    if (interaction.isStringSelectMenu() && interaction.customId === 'owner_invite_select') {
+      const { checkOwner } = require('../utils/ownerGuard');
+      if (!await checkOwner(interaction)) return;
+
+      const guildId = interaction.values[0];
+      const guild   = interaction.client.guilds.cache.get(guildId);
+      if (!guild) return interaction.update({ content: '❌ Server not found.', components: [] });
+
+      try {
+        // Find a text channel the bot can create invites in
+        const channel = guild.channels.cache.find(c =>
+          c.isTextBased() && guild.members.me.permissionsIn(c).has('CreateInstantInvite')
+        );
+        if (!channel) {
+          return interaction.update({ content: `❌ No channel found in **${guild.name}** where the bot can create an invite.`, components: [] });
+        }
+        const invite = await channel.createInvite({ maxAge: 0, maxUses: 1, reason: 'Owner requested via /owner invite' });
+        return interaction.update({
+          content: `🔗 **Invite for ${guild.name}:**\n${invite.url}\n\n*Single use, never expires.*`,
+          components: [],
+        });
+      } catch (err) {
+        return interaction.update({ content: `❌ Failed to create invite: ${err.message}`, components: [] });
+      }
+    }
+
+    // ── /owner leave — select menu response ──────────────────────────────────
+    if (interaction.isStringSelectMenu() && interaction.customId === 'owner_leave_select') {
+      const { checkOwner } = require('../utils/ownerGuard');
+      if (!await checkOwner(interaction)) return;
+
+      const guildId = interaction.values[0];
+      const guild   = interaction.client.guilds.cache.get(guildId);
+      if (!guild) return interaction.update({ content: '❌ Server not found.', components: [] });
+
+      const name = guild.name;
+      try {
+        await guild.leave();
+        return interaction.update({ content: `👋 Successfully left **${name}**.`, components: [] });
+      } catch (err) {
+        return interaction.update({ content: `❌ Failed to leave **${name}**: ${err.message}`, components: [] });
+      }
+    }
+
     // ── Slash commands ───────────────────────────────────────────────────────
     if (!interaction.isChatInputCommand()) return;
 
