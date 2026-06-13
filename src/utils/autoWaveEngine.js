@@ -216,6 +216,24 @@ function setEngineState(state) {
 
 const incompleteDmCache = new Map();
 
+// Tracks repeated log messages per guild to avoid spam.
+// Key: `${guildId}:${messageType}`, value: number of times sent.
+// After 2 sends we go silent until the issue is resolved (counter deleted).
+const spamCache = new Map();
+
+function logOnce(guildId, type, guild, cfg, firstMsg, secondMsg) {
+  const key   = `${guildId}:${type}`;
+  const count = (spamCache.get(key) ?? 0) + 1;
+  spamCache.set(key, count);
+  if (count === 1) return logToGuild(guild, cfg, firstMsg);
+  if (count === 2) return logToGuild(guild, cfg, secondMsg);
+  return Promise.resolve(); // silent from here on
+}
+
+function clearSpam(guildId, type) {
+  spamCache.delete(`${guildId}:${type}`);
+}
+
 // ─── Main tick ────────────────────────────────────────────────────────────────
 
 async function tick(client) {
@@ -259,16 +277,28 @@ async function tick(client) {
       if (now - lastRecv >= delayMs) {
         const rawAd = await fetchAndCacheAd(guild, cfg);
         if (!rawAd) {
-          await logToGuild(guild, cfg, `⚠️ **Auto-Wave:** No valid ad found in <#${cfg.adChannelId}>. Make sure your most recent message contains a \`discord.gg\` invite link.`);
+          await logOnce(
+            guildId, 'no_ad', guild, cfg,
+            `⚠️ **Auto-Wave:** No valid ad found in <#${cfg.adChannelId}>. Make sure your most recent message contains a \`discord.gg\` invite link.`,
+            `⚠️ **Auto-Wave:** Still no valid ad in <#${cfg.adChannelId}>. We’ll keep checking silently — we won’t notify you again until it’s fixed.`,
+          );
           continue;
         }
 
         const whitelisted = await getWhitelistedDomains();
         const adReason = validateAd(rawAd, whitelisted);
         if (adReason) {
-          await logToGuild(guild, cfg, `⚠️ **Auto-Wave:** Your ad was skipped this tick because it failed a content validation check. Check that it only contains server invite links. Non-invite links must be whitelisted.`);
+          await logOnce(
+            guildId, 'bad_ad', guild, cfg,
+            `⚠️ **Auto-Wave:** Your ad was skipped because it contains a non-whitelisted link. Make sure your ad only contains \`discord.gg\` invite links.`,
+            `⚠️ **Auto-Wave:** Ad still failing validation. We’ll keep checking silently — we won’t notify you again until it’s fixed.`,
+          );
           continue;
         }
+
+        // Ad is valid — clear any previous ad-related spam counters
+        clearSpam(guildId, 'no_ad');
+        clearSpam(guildId, 'bad_ad');
 
         readyGuilds.push({ guildId, guild, cfg, rawAd });
       }
@@ -312,7 +342,11 @@ async function tick(client) {
     }
 
     if (!matchedB) {
-      await logToGuild(serverA.guild, serverA.cfg, `⏳ **Auto-Wave:** We searched the network, but no eligible partners were found this tick. The network will try again later.`);
+      await logOnce(
+        serverA.guildId, 'no_match', serverA.guild, serverA.cfg,
+        `⏳ **Auto-Wave:** We searched the network, but no eligible partners were found this tick. The network will try again later.`,
+        `⏳ **Auto-Wave:** Still no eligible partners found. We’ll keep trying silently — we won’t notify you again until a match is found.`,
+      );
       return;
     }
 
@@ -356,7 +390,11 @@ async function tick(client) {
       await recordPair(serverA.guildId, matchedB.guildId);
       await autoWaveStore.setLastReceived(serverA.guildId);
       await autoWaveStore.setLastReceived(matchedB.guildId);
-      
+
+      // Reset all spam counters on successful trade
+      clearSpam(serverA.guildId, 'no_match');
+      clearSpam(matchedB.guildId, 'no_match');
+
       await logToGuild(serverA.guild, serverA.cfg, `✅ **Auto-Wave:** You partnered with **${matchedB.guild.name}**! Their ad was posted in <#${serverA.cfg.partnerChannelId}>, and your ad was posted in their server.`);
       await logToGuild(matchedB.guild, matchedB.cfg, `✅ **Auto-Wave:** You partnered with **${serverA.guild.name}**! Their ad was posted in <#${matchedB.cfg.partnerChannelId}>, and your ad was posted in their server.`);
     } else {
