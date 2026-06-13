@@ -100,6 +100,26 @@ module.exports = {
         .setDescription('Make the bot leave one of its servers')
     )
 
+    // ping toggle
+    .addSubcommand(sub =>
+      sub.setName('ping')
+        .setDescription('Turn Auto-Wave pings on or off for a specific server')
+        .addStringOption(opt =>
+          opt.setName('guild_id')
+            .setDescription('The server to toggle pings for')
+            .setRequired(true)
+        )
+        .addStringOption(opt =>
+          opt.setName('setting')
+            .setDescription('on or off')
+            .setRequired(true)
+            .addChoices(
+              { name: '✅ On  — pings enabled', value: 'on' },
+              { name: '🔕 Off — silent posts', value: 'off' },
+            )
+        )
+    )
+
     // error
     .addSubcommand(sub =>
       sub.setName('error')
@@ -305,6 +325,23 @@ module.exports = {
       return interaction.reply({
         content: '👋 **Select the server you want the bot to leave:**',
         components: [buildGuildMenu(client, 'owner_leave_select')],
+        ephemeral: true,
+      });
+    }
+
+    // ── /owner ping ───────────────────────────────────────────────────────────────
+    if (sub === 'ping') {
+      const guildId = interaction.options.getString('guild_id');
+      const setting = interaction.options.getString('setting');
+      const enabled = setting === 'on';
+      const guild   = client.guilds.cache.get(guildId);
+      const name    = guild?.name ?? `\`${guildId}\``;
+
+      await setupStore.set(guildId, 'pingEnabled', enabled);
+      return interaction.reply({
+        content: enabled
+          ? `✅ **Pings enabled** for **${name}**. Auto-Wave will now ping roles when ads arrive.`
+          : `🔕 **Pings disabled** for **${name}**. Auto-Wave will post ads silently.`,
         ephemeral: true,
       });
     }

@@ -260,19 +260,6 @@ module.exports = {
     .addSubcommand(sub =>
       sub.setName('view')
         .setDescription('View the current Auto-Wave config for this server')
-    )
-    .addSubcommand(sub =>
-      sub.setName('ping')
-        .setDescription('Toggle Auto-Wave pings on or off for this server')
-        .addStringOption(opt =>
-          opt.setName('setting')
-            .setDescription('Turn pings on or off')
-            .setRequired(true)
-            .addChoices(
-              { name: '✅ On  — pings are enabled', value: 'on' },
-              { name: '🔕 Off — no pings will be sent', value: 'off' },
-            )
-        )
     ),
 
   async execute(interaction) {
@@ -307,19 +294,6 @@ module.exports = {
         .setTimestamp();
 
       return interaction.reply({ embeds: [embed], ephemeral: true });
-    }
-
-    // ── /config ping ───────────────────────────────────────────────────────────────
-    if (sub === 'ping') {
-      const setting = interaction.options.getString('setting');
-      const enabled = setting === 'on';
-      await setupStore.set(interaction.guildId, 'pingEnabled', enabled);
-      return interaction.reply({
-        content: enabled
-          ? `✅ **Pings enabled.** Auto-Wave will now ping roles when partner ads arrive in your server.`
-          : `🔕 **Pings disabled.** Auto-Wave will post partner ads silently with no role or @here pings.`,
-        ephemeral: true,
-      });
     }
 
     // ── /config setup — always start from step 0 so users can fix any misclick ─
