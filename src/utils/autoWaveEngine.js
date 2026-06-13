@@ -42,6 +42,12 @@ const TICK_MS         = 30 * 60 * 1000;
 const MIN_MEMBERS     = 25;
 const MIN_COOLDOWN_MS = 30 * 60 * 1000;
 
+/**
+ * Set of message IDs the bot intentionally deleted (e.g. rollback).
+ * messageDelete.js checks this to avoid issuing false strikes.
+ */
+const botDeletedMessages = new Set();
+
 // Invite patterns that are always allowed in ads
 const INVITE_RE     = /discord\.gg\/[a-zA-Z0-9-]+|discord\.com\/invite\/[a-zA-Z0-9-]+/gi;
 // Any URL in the message
@@ -128,37 +134,44 @@ function validateAd(adContent, whitelistedDomains) {
 }
 
 // ─── Ping resolver ────────────────────────────────────────────────────────────
-// Tiers: basic (no ping) | here | partnerhere | member
+// Returns { ping: string, allowedMentions: object }
+// Tiers based on RECEIVING server's absolute member count (matches /help):
+//   < 100   → no ping
+//   100–499 → @here
+//   500–999 → Partner Ping Role
+//   1,000+  → Member Role
 
 async function resolvePing(sourceGuild, targetGuild, targetCfg) {
-  const diff = targetGuild.memberCount - sourceGuild.memberCount;
-
-  let tier = 0; // Tier 0: Member Role
-  if (diff >= 300) tier = 1; // Tier 1: @here
-  if (diff >= 1000) tier = 2; // Tier 2: Partner Ping Role
-  if (diff >= 6000) tier = 3; // Tier 3: Nothing
-  // diff >= 10000 is still Tier 3 (Nothing)
-
-  if (tier === 0) {
-    const role = targetGuild.roles.cache.get(targetCfg.memberRoleId);
-    if (role) {
-      const pct = role.members.size / targetGuild.memberCount;
-      if (pct >= 0.80) return `[Placeholder for ${role.name} ping]`;
-    }
-    tier = 1; // Fallback to Tier 1 if role is missing or fails 80% rule
+  // Ping disabled for this server
+  if (targetCfg.pingEnabled === false) {
+    return { ping: '', allowedMentions: { parse: [] } };
   }
 
-  if (tier === 1) {
-    return '[Placeholder for here ping]';
+  const count = targetGuild.memberCount;
+
+  if (count < 100) {
+    // No ping for very small servers
+    return { ping: '', allowedMentions: { parse: [] } };
   }
 
-  if (tier === 2) {
+  if (count < 500) {
+    // @here for small servers
+    return { ping: '@here', allowedMentions: { parse: ['everyone'] } };
+  }
+
+  if (count < 1000) {
+    // Partner Ping Role for medium servers
     const role = targetGuild.roles.cache.get(targetCfg.partnerPingRoleId);
-    if (role) return `[Placeholder for ${role.name} ping]`;
-    tier = 3; // Fallback to Tier 3 if role is missing
+    if (role) return { ping: `<@&${role.id}>`, allowedMentions: { roles: [role.id] } };
+    // Fallback to @here if role missing
+    return { ping: '@here', allowedMentions: { parse: ['everyone'] } };
   }
 
-  return ''; // Tier 3 (Nothing)
+  // Member Role for large servers (1,000+)
+  const role = targetGuild.roles.cache.get(targetCfg.memberRoleId);
+  if (role) return { ping: `<@&${role.id}>`, allowedMentions: { roles: [role.id] } };
+  // Fallback to @here if role missing
+  return { ping: '@here', allowedMentions: { parse: ['everyone'] } };
 }
 
 // ─── Add Wind Bot button ─────────────────────────────────────────────────────
@@ -305,10 +318,10 @@ async function tick(client) {
 
     // 4. Execute Bilateral Trade ──────────────────────────────────────────────
     const pingAForB = await resolvePing(matchedB.guild, serverA.guild, serverA.cfg);
-    const finalAdB  = pingAForB ? `${matchedB.rawAd}\n\n${pingAForB}` : matchedB.rawAd;
+    const finalAdB  = pingAForB.ping ? `${matchedB.rawAd}\n\n${pingAForB.ping}` : matchedB.rawAd;
 
     const pingBForA = await resolvePing(serverA.guild, matchedB.guild, matchedB.cfg);
-    const finalAdA  = pingBForA ? `${serverA.rawAd}\n\n${pingBForA}` : serverA.rawAd;
+    const finalAdA  = pingBForA.ping ? `${serverA.rawAd}\n\n${pingBForA.ping}` : serverA.rawAd;
 
     const channelA = serverA.guild.channels.cache.get(serverA.cfg.partnerChannelId);
     const channelB = matchedB.guild.channels.cache.get(matchedB.cfg.partnerChannelId);
@@ -319,7 +332,7 @@ async function tick(client) {
       msgA = await channelA.send({
         content: finalAdB,
         components: [buildAddBotRow(client.user.id)],
-        allowedMentions: { parse: [] }
+        allowedMentions: pingAForB.allowedMentions,
       });
       successA = true;
     } catch {
@@ -332,7 +345,7 @@ async function tick(client) {
       msgB = await channelB.send({
         content: finalAdA,
         components: [buildAddBotRow(client.user.id)],
-        allowedMentions: { parse: [] }
+        allowedMentions: pingBForA.allowedMentions,
       });
       successB = true;
     } catch {
@@ -347,10 +360,16 @@ async function tick(client) {
       await logToGuild(serverA.guild, serverA.cfg, `✅ **Auto-Wave:** You partnered with **${matchedB.guild.name}**! Their ad was posted in <#${serverA.cfg.partnerChannelId}>, and your ad was posted in their server.`);
       await logToGuild(matchedB.guild, matchedB.cfg, `✅ **Auto-Wave:** You partnered with **${serverA.guild.name}**! Their ad was posted in <#${matchedB.cfg.partnerChannelId}>, and your ad was posted in their server.`);
     } else {
-      // Rollback any successful ad if the other failed
-      if (successA && msgA) await msgA.delete().catch(() => {});
-      if (successB && msgB) await msgB.delete().catch(() => {});
-      
+      // Rollback: mark messages as bot-deleted so messageDelete won't issue strikes
+      if (successA && msgA) {
+        botDeletedMessages.add(msgA.id);
+        await msgA.delete().catch(() => {});
+      }
+      if (successB && msgB) {
+        botDeletedMessages.add(msgB.id);
+        await msgB.delete().catch(() => {});
+      }
+
       await logToGuild(serverA.guild, serverA.cfg, `⏳ **Auto-Wave:** We found a match (**${matchedB.guild.name}**), but the trade failed due to permission errors on one side. The trade was safely cancelled.`);
       await logToGuild(matchedB.guild, matchedB.cfg, `⏳ **Auto-Wave:** We found a match (**${serverA.guild.name}**), but the trade failed due to permission errors on one side. The trade was safely cancelled.`);
     }
@@ -371,4 +390,4 @@ function startAutoWave(client) {
   }, TICK_MS);
 }
 
-module.exports = { startAutoWave, tick, isEngineRunning, setEngineState };
+module.exports = { startAutoWave, tick, isEngineRunning, setEngineState, botDeletedMessages };

@@ -17,6 +17,7 @@ const KEY_MAP = {
   minMembers:        'min_members',
   maxMembers:        'max_members',
   strikes:           'strikes',
+  pingEnabled:       'ping_enabled',
 };
 
 const COL_MAP = Object.fromEntries(Object.entries(KEY_MAP).map(([k, v]) => [v, k]));
