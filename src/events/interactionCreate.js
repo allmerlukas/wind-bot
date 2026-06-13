@@ -122,11 +122,12 @@ module.exports = {
         // Run safety check if defined
         if (step.checkFn && role) {
           await interaction.deferUpdate();
+          // Fetch all members so role.members.size is accurate (cache may be incomplete)
+          try { await interaction.guild.members.fetch(); } catch { /* ignore, best-effort */ }
           const err = await step.checkFn(role, interaction.guild);
           if (err) {
-            // Re-show same step with error
-            const msg = buildStepMessage(interaction.guildId, stepIndex);
-            msg.embeds[0] = EmbedBuilder.from(msg.embeds[0]).addFields({ name: '❌ Error', value: err, inline: false });
+            const msg = await buildStepMessage(interaction.guildId, stepIndex);
+            msg.embeds[0] = EmbedBuilder.from(msg.embeds[0]).addFields({ name: '\u274c Error', value: err, inline: false });
             return interaction.editReply(msg);
           }
         }
@@ -190,14 +191,14 @@ module.exports = {
         const stepIndex = parseInt(interaction.customId.split(':')[1], 10);
         const nextStep  = stepIndex + 1;
         if (nextStep >= STEPS.length) {
-          return interaction.update({ embeds: [buildSummary(interaction.guildId)], components: [] });
+          return interaction.update({ embeds: [await buildSummary(interaction.guildId)], components: [] });
         }
-        return interaction.update(buildStepMessage(interaction.guildId, nextStep));
+        return interaction.update(await buildStepMessage(interaction.guildId, nextStep));
       }
 
       // ── Config wizard: finish early ───────────────────────────────────────────
       if (interaction.isButton() && interaction.customId === 'cfg_done') {
-        return interaction.update({ embeds: [buildSummary(interaction.guildId)], components: [] });
+        return interaction.update({ embeds: [await buildSummary(interaction.guildId)], components: [] });
       }
 
       // ── Select menu: wave paste picker ───────────────────────────────────────
