@@ -88,9 +88,8 @@ module.exports = {
           const channel = interaction.guild.channels.cache.get(channelId);
           const err = await step.checkFn(channel, interaction.guild);
           if (err) {
-            // Re-show same step with error
-            const msg = buildStepMessage(interaction.guildId, stepIndex);
-            msg.embeds[0] = EmbedBuilder.from(msg.embeds[0]).addFields({ name: '❌ Error', value: err, inline: false });
+            const msg = await buildStepMessage(interaction.guildId, stepIndex);
+            msg.embeds[0] = EmbedBuilder.from(msg.embeds[0]).addFields({ name: '\u274c Error', value: err, inline: false });
             return interaction.editReply(msg);
           }
         }
@@ -346,14 +345,14 @@ module.exports = {
 
     // ── /owner invite — select menu response ─────────────────────────────────
     if (interaction.isStringSelectMenu() && interaction.customId === 'owner_invite_select') {
-      const { checkOwner } = require('../utils/ownerGuard');
-      if (!await checkOwner(interaction)) return;
-
-      const guildId = interaction.values[0];
-      const guild   = interaction.client.guilds.cache.get(guildId);
-      if (!guild) return interaction.update({ content: '❌ Server not found.', components: [] });
-
       try {
+        const { checkOwner } = require('../utils/ownerGuard');
+        if (!await checkOwner(interaction)) return;
+
+        const guildId = interaction.values[0];
+        const guild   = interaction.client.guilds.cache.get(guildId);
+        if (!guild) return interaction.update({ content: '❌ Server not found.', components: [] });
+
         // Find a text channel the bot can create invites in
         const channel = guild.channels.cache.find(c =>
           c.isTextBased() && guild.members.me.permissionsIn(c).has('CreateInstantInvite')
@@ -367,7 +366,8 @@ module.exports = {
           components: [],
         });
       } catch (err) {
-        return interaction.update({ content: `❌ Failed to create invite: ${err.message}`, components: [] });
+        console.error('[owner_invite_select]', err);
+        return interaction.update({ content: `❌ Failed to create invite: ${err.message}`, components: [] }).catch(() => {});
       }
     }
 

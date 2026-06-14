@@ -5,9 +5,11 @@
  *   /owner status         — Bot stats: uptime, memory, guild count, user count
  *   /owner guilds         — List every server the bot is in
  *   /owner autowave       — Show Auto-Wave enrollment across all guilds
- *   /owner broadcast      — Send to every guild's log channel, DM owner if no log channel
+ *   /owner broadcast      — Send to every guild’s log channel, DM owner if no log channel
  *   /owner invite         — Get an invite link from a server (pick from list)
  *   /owner leave          — Leave a server (pick from list)
+ *   /owner ping           — Toggle Auto-Wave pings on/off for a specific server
+ *   /owner strike-reset   — Reset a server’s strike count to 0
  *   /owner error          — View the most recent bot errors
  *   /owner blacklist-add  — Ban a guild from Auto-Wave
  *   /owner blacklist-remove
