@@ -120,6 +120,17 @@ module.exports = {
         )
     )
 
+    // strike-reset
+    .addSubcommand(sub =>
+      sub.setName('strike-reset')
+        .setDescription('Reset the strike count for a server back to 0')
+        .addStringOption(opt =>
+          opt.setName('guild_id')
+            .setDescription('The server ID to reset strikes for')
+            .setRequired(true)
+        )
+    )
+
     // error
     .addSubcommand(sub =>
       sub.setName('error')
@@ -342,6 +353,19 @@ module.exports = {
         content: enabled
           ? `✅ **Pings enabled** for **${name}**. Auto-Wave will now ping roles when ads arrive.`
           : `🔕 **Pings disabled** for **${name}**. Auto-Wave will post ads silently.`,
+        ephemeral: true,
+      });
+    }
+
+    // ── /owner strike-reset ───────────────────────────────────────────────────────────
+    if (sub === 'strike-reset') {
+      const guildId = interaction.options.getString('guild_id');
+      const guild   = client.guilds.cache.get(guildId);
+      const name    = guild?.name ?? `\`${guildId}\``;
+
+      await setupStore.set(guildId, 'strikes', 0);
+      return interaction.reply({
+        content: `✅ Strikes reset to **0** for **${name}**.`,
         ephemeral: true,
       });
     }
