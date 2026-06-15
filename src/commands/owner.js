@@ -133,6 +133,17 @@ module.exports = {
         )
     )
 
+    // check
+    .addSubcommand(sub =>
+      sub.setName('check')
+        .setDescription('Check strikes and blacklist status for a server')
+        .addStringOption(opt =>
+          opt.setName('guild_id')
+            .setDescription('The server ID to check')
+            .setRequired(true)
+        )
+    )
+
     // error
     .addSubcommand(sub =>
       sub.setName('error')
@@ -370,6 +381,37 @@ module.exports = {
         content: `✅ Strikes reset to **0** for **${name}**.`,
         ephemeral: true,
       });
+    }
+
+    // ── /owner check ───────────────────────────────────────────────────────────────
+    if (sub === 'check') {
+      const guildId    = interaction.options.getString('guild_id');
+      const guild      = client.guilds.cache.get(guildId);
+      const cfg        = await setupStore.get(guildId);
+      const blacklisted = (await getAllBlacklisted()).includes(guildId);
+      const strikes    = cfg.strikes ?? 0;
+      const name       = guild?.name ?? `Unknown (\`${guildId}\`)`;
+
+      const strikeBar  = ['□','□','□'].map((_, i) => i < strikes ? '🟥' : '□').join(' ');
+      const statusLine = blacklisted
+        ? '🚫 **BLACKLISTED** — excluded from Auto-Wave'
+        : strikes === 0
+          ? '✅ Clean — no strikes'
+          : `⚠️ **${strikes}/3 strikes** ${strikeBar}`;
+
+      const embed = new EmbedBuilder()
+        .setColor(blacklisted ? 0xED4245 : strikes > 0 ? 0xFEE75C : 0x57F287)
+        .setTitle(`🔍 ${name}`)
+        .addFields(
+          { name: 'Server ID',   value: `\`${guildId}\``,            inline: true },
+          { name: 'Members',     value: `${guild?.memberCount ?? 'N/A'}`, inline: true },
+          { name: 'Status',      value: statusLine,                    inline: false },
+          { name: 'Ping',        value: cfg.pingEnabled !== false ? '🔔 Enabled' : '🔕 Disabled', inline: true },
+          { name: 'Delay',       value: cfg.partnerDelayHours ? `${cfg.partnerDelayHours}h` : 'Not set', inline: true },
+        )
+        .setTimestamp();
+
+      return interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
     // ── /owner error ──────────────────────────────────────────────────────────

@@ -2,6 +2,7 @@ const { extractLinks, addLinks } = require('../utils/linkTracker');
 const waveSessions = require('../utils/waveSessions');
 const waveStore = require('../utils/waveStore');
 const { ordinal } = require('../commands/wave');
+const { botDeletedMessages } = require('../utils/autoWaveEngine');
 
 const DELETE_DELAY = parseInt(process.env.DELETE_DELAY ?? '5000', 10);
 
@@ -153,7 +154,7 @@ module.exports = {
     const links = extractLinks(message.content);
     if (links.length === 0) return;
 
-    const { newLinksAdded, totalPartners } = addLinks(
+    const { newLinksAdded, totalPartners } = await addLinks(
       message.author.id,
       message.author.username,
       links
@@ -167,6 +168,10 @@ module.exports = {
       `🔗 <@${message.author.id}> added ${addedWord}! You now have **${totalPartners}** ${partnerWord} in total.`
     ).catch(() => null);
 
-    if (notification) setTimeout(() => notification.delete().catch(() => {}), DELETE_DELAY);
+    if (notification) {
+      // Register before deleting so messageDelete doesn't issue a false strike
+      botDeletedMessages.add(notification.id);
+      setTimeout(() => notification.delete().catch(() => {}), DELETE_DELAY);
+    }
   }
 };
