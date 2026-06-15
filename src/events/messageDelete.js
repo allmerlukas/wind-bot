@@ -38,19 +38,20 @@ module.exports = {
       const preview = message.content?.slice(0, 100) ?? '(no content cached)';
       console.log(`[Strike] ${message.guild.name} (${message.guild.id}) — strike ${newStrikes}/3. Deleted message preview: "${preview}"`);
 
-      // Attempt to notify their log channel
-      let logChannel;
-      if (cfg.logChannelId) {
-        logChannel = message.guild.channels.cache.get(cfg.logChannelId);
-      }
-
       // Show a preview of the deleted message so admins know what triggered it
       const msgPreview = message.content
         ? `\`\`\`${message.content.slice(0, 200)}${message.content.length > 200 ? '…' : ''}\`\`\``
         : '*Message content not available (not cached)*';
 
+      const strikeBar = ['□','□','□'].map((_, i) => i < newStrikes ? '🟥' : '□').join(' ');
+
+      // ── Notify the offending server's log channel ──────────────────────────
+      let logChannel;
+      if (cfg.logChannelId) {
+        logChannel = message.guild.channels.cache.get(cfg.logChannelId);
+      }
+
       if (newStrikes >= 3) {
-        // Strike 3: Blacklist the server
         await blacklistGuild(message.guild.id, 'Deleted partner ads 3 times.');
 
         if (logChannel?.isTextBased()) {
@@ -63,7 +64,6 @@ module.exports = {
           } catch { /* ignore */ }
         }
       } else {
-        // Strike 1 or 2: Send a warning
         if (logChannel?.isTextBased()) {
           try {
             await logChannel.send(
@@ -73,6 +73,27 @@ module.exports = {
             );
           } catch { /* ignore */ }
         }
+      }
+
+      // ── Also notify the bot owner's server log channel ────────────────────
+      const ownerGuildId = process.env.GUILD_ID;
+      if (ownerGuildId && ownerGuildId !== message.guild.id) {
+        try {
+          const ownerCfg = await setupStore.get(ownerGuildId);
+          const ownerGuild = client.guilds.cache.get(ownerGuildId);
+          const ownerLog = ownerCfg.logChannelId
+            ? ownerGuild?.channels.cache.get(ownerCfg.logChannelId)
+            : null;
+
+          if (ownerLog?.isTextBased()) {
+            const action = newStrikes >= 3 ? '🚫 **BLACKLISTED**' : `⚠️ **STRIKE ${newStrikes}/3**`;
+            await ownerLog.send(
+              `${action} — **${message.guild.name}** (\`${message.guild.id}\`) ${strikeBar}\n` +
+              `A partner ad was deleted from their partner channel.\n\n` +
+              `**Deleted message:**\n${msgPreview}`
+            );
+          }
+        } catch { /* ignore */ }
       }
     }
   },
