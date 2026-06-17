@@ -91,7 +91,7 @@ const STEPS = [
   {
     id:          'cfg_member_role',
     label:       '👥 Member Role',
-    description: 'Select the role held by **most** of your members (≥90%). Used as a ping for servers with 100–499 members.',
+    description: 'Select the role held by **most** of your members (≥90%). Used as a ping for large incoming servers.',
     type:        'role',
     storeKey:    'memberRoleId',
     checkFn:     async (role, guild) => {
@@ -99,7 +99,7 @@ const STEPS = [
       const roleCount   = role.members.size;
       const pct         = memberCount > 0 ? roleCount / memberCount : 0;
       if (pct < 0.90) {
-        return `⚠️ **${role.name}** only has **${roleCount}** members (${Math.round(pct * 100)}% of your server).\nThe Member Role must be held by **at least 90%** of your members — it should be the base role everyone gets when they join.`;
+        return `❌ **${role.name}** only covers **${roleCount}** out of **${memberCount}** members (${Math.round(pct * 100)}%).\n\nThe **Member Role** must be held by ≥ 90% of your members — it should be the base role everyone receives on join.\n\n💡 If you don't have such a role, create a \`@Member\` role, assign it to everyone (including your bots), and select it here.`;
       }
       return null;
     },
@@ -107,15 +107,15 @@ const STEPS = [
   {
     id:          'cfg_ping_role',
     label:       '🔔 Partner Ping Role',
-    description: 'Select the role pinged when a partner ad arrives. Must be held by **at least 9%** of your members.',
+    description: 'Select the role pinged when a partner ad arrives. Must cover **at least 10%** of your members.',
     type:        'role',
     storeKey:    'partnerPingRoleId',
     checkFn:     async (role, guild) => {
       const memberCount = guild.memberCount;
       const roleCount   = role.members.size;
       const pct         = memberCount > 0 ? roleCount / memberCount : 0;
-      if (pct < 0.09) {
-        return `⚠️ **${role.name}** only has **${roleCount}** members (${Math.round(pct * 100)}% of your server).\nThe Partner Ping Role must be held by **at least 9%** of your members — it should be a role many people have opted into (e.g. a partner ping or notification role).`;
+      if (pct < 0.10) {
+        return `❌ **${role.name}** only covers **${roleCount}** out of **${memberCount}** members (${Math.round(pct * 100)}%).\n\nThe **Partner Ping Role** must be held by ≥ 10% of your members so partner ads actually reach people.\n\n💡 If you don't have a role that big, you can give your bots this role too — or create a new \`@Partner Ping\` role and have members opt in.`;
       }
       return null;
     },
