@@ -35,7 +35,6 @@ const setupStore                                   = require('./setupStore');
 const autoWaveStore                                = require('./autoWaveStore');
 const { recordPair, pairedRecently, nextSource }   = require('./pairStore');
 const { isBlacklisted, getWhitelistedDomains }     = require('./blacklistStore');
-const { stripPings }                               = require('./pingStripper');
 const { logError }                                 = require('./errorStore');
 
 const TICK_MS         = 30 * 60 * 1000;
@@ -52,8 +51,6 @@ const botDeletedMessages = new Set();
 const INVITE_RE     = /discord\.gg\/[a-zA-Z0-9-]+|discord\.com\/invite\/[a-zA-Z0-9-]+/gi;
 // Any URL in the message
 const ANY_URL_RE    = /https?:\/\/[^\s<>"]+|www\.[^\s<>"]+/gi;
-// Ping patterns to strip before sending
-const PING_RE       = /@everyone|@here|<@&\d+>/g;
 // Require at least one discord.gg link in the ad
 const NEEDS_INVITE  = /discord\.gg\/[a-zA-Z0-9-]+|discord\.com\/invite\/[a-zA-Z0-9-]+/i;
 
@@ -100,9 +97,7 @@ async function fetchAndCacheAd(guild, cfg) {
 
   if (!adMsg) return null;
 
-  // Note: @mentions are automatically stripped to prevent ping abuse
-  const stripped = stripPings(adMsg.content);
-  return stripped || null;
+  return adMsg.content.trim() || null;
 }
 
 // ─── Ad validation ────────────────────────────────────────────────────────────
@@ -146,7 +141,13 @@ function validateAd(adContent, whitelistedDomains) {
 //  Small  (< 50)  : < 0.85 partner | 0.85 member
 
 async function resolvePing(sourceGuild, targetGuild, targetCfg) {
-  // Ping disabled for this server
+  // Check global ping kill-switch (set via /owner ping on/off)
+  const globalCfg = await setupStore.get('global');
+  if (globalCfg?.pingEnabled === false) {
+    return { ping: null, allowedMentions: { parse: [] } };
+  }
+
+  // Ping disabled for this specific server
   if (targetCfg.pingEnabled === false) {
     return { ping: null, allowedMentions: { parse: [] } };
   }

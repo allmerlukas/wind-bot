@@ -102,22 +102,17 @@ module.exports = {
         .setDescription('Make the bot leave one of its servers')
     )
 
-    // ping toggle
+    // ping toggle (global)
     .addSubcommand(sub =>
       sub.setName('ping')
-        .setDescription('Turn Auto-Wave pings on or off for a specific server')
-        .addStringOption(opt =>
-          opt.setName('guild_id')
-            .setDescription('The server to toggle pings for')
-            .setRequired(true)
-        )
+        .setDescription('Turn Auto-Wave pings on or off for ALL servers')
         .addStringOption(opt =>
           opt.setName('setting')
             .setDescription('on or off')
             .setRequired(true)
             .addChoices(
-              { name: '✅ On  — pings enabled', value: 'on' },
-              { name: '🔕 Off — silent posts', value: 'off' },
+              { name: '✅ On  — pings enabled for all servers', value: 'on' },
+              { name: '🔕 Off — silent posts for all servers', value: 'off' },
             )
         )
     )
@@ -353,19 +348,14 @@ module.exports = {
       });
     }
 
-    // ── /owner ping ───────────────────────────────────────────────────────────────
+    // ── /owner ping (global toggle) ───────────────────────────────────────────────
     if (sub === 'ping') {
-      const guildId = interaction.options.getString('guild_id');
-      const setting = interaction.options.getString('setting');
-      const enabled = setting === 'on';
-      const guild   = client.guilds.cache.get(guildId);
-      const name    = guild?.name ?? `\`${guildId}\``;
-
-      await setupStore.set(guildId, 'pingEnabled', enabled);
+      const enabled = interaction.options.getString('setting') === 'on';
+      await setupStore.set('global', 'pingEnabled', enabled);
       return interaction.reply({
         content: enabled
-          ? `✅ **Pings enabled** for **${name}**. Auto-Wave will now ping roles when ads arrive.`
-          : `🔕 **Pings disabled** for **${name}**. Auto-Wave will post ads silently.`,
+          ? `✅ **Pings enabled globally.** All servers will now ping roles when ads arrive.`
+          : `🔕 **Pings disabled globally.** All servers will post ads silently until re-enabled.`,
         ephemeral: true,
       });
     }
