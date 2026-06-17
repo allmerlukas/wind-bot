@@ -13,7 +13,7 @@
  *     Validate the ad for non-whitelisted external links.
  *
  *  4. TARGET — shuffle remaining guilds, iterate until we find one that:
- *       a. Has ≥ 25 members
+ *       a. Has ≥ 10 members
  *       b. Per-server receive cooldown has passed
  *       c. Source↔target pair hasn't partnered in the last 3 days
  *       d. Neither guild is blacklisted
@@ -39,7 +39,7 @@ const { stripPings }                               = require('./pingStripper');
 const { logError }                                 = require('./errorStore');
 
 const TICK_MS         = 30 * 60 * 1000;
-const MIN_MEMBERS     = 25;
+const MIN_MEMBERS     = 10;
 const MIN_COOLDOWN_MS = 30 * 60 * 1000;
 
 /**
