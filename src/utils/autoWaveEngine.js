@@ -247,18 +247,42 @@ function setEngineState(state) {
 
 const incompleteDmCache = new Map();
 
-// Tracks repeated log messages per guild to avoid spam.
-// Key: `${guildId}:${messageType}`, value: number of times sent.
-// After 2 sends we go silent until the issue is resolved (counter deleted).
+// Tracks repeated log messages per guild.
+// Key: `${guildId}:${messageType}`, value: { count, messageId, channelId }
+// On first call: sends the message. On subsequent calls: edits it with try(x).
 const spamCache = new Map();
 
-function logOnce(guildId, type, guild, cfg, firstMsg, secondMsg) {
+async function logAndEdit(guildId, type, guild, cfg, msg) {
   const key   = `${guildId}:${type}`;
-  const count = (spamCache.get(key) ?? 0) + 1;
-  spamCache.set(key, count);
-  if (count === 1) return logToGuild(guild, cfg, firstMsg);
-  if (count === 2) return logToGuild(guild, cfg, secondMsg);
-  return Promise.resolve(); // silent from here on
+  const entry = spamCache.get(key) ?? { count: 0, messageId: null, channelId: null };
+  entry.count++;
+
+  const text = entry.count === 1 ? msg : `${msg} try(${entry.count})`;
+
+  // Try editing the existing message first
+  if (entry.messageId && entry.channelId) {
+    try {
+      const ch = guild.channels.cache.get(entry.channelId);
+      if (ch?.isTextBased()) {
+        const existing = await ch.messages.fetch(entry.messageId);
+        await existing.edit(text);
+        spamCache.set(key, entry);
+        return;
+      }
+    } catch { /* message deleted or inaccessible — fall through to send a new one */ }
+  }
+
+  // Send a fresh message
+  const logCh = cfg.logChannelId ? guild.channels.cache.get(cfg.logChannelId) : null;
+  if (logCh?.isTextBased()) {
+    try {
+      const sent = await logCh.send(text);
+      entry.messageId = sent.id;
+      entry.channelId = sent.channelId;
+    } catch { /* ignore */ }
+  }
+
+  spamCache.set(key, entry);
 }
 
 function clearSpam(guildId, type) {
@@ -308,10 +332,9 @@ async function tick(client) {
       if (now - lastRecv >= delayMs) {
         const rawAd = await fetchAndCacheAd(guild, cfg);
         if (!rawAd) {
-          await logOnce(
+          await logAndEdit(
             guildId, 'no_ad', guild, cfg,
             `⚠️ **Auto-Wave:** No valid ad found in <#${cfg.adChannelId}>. Make sure your most recent message contains a \`discord.gg\` invite link.`,
-            `⚠️ **Auto-Wave:** Still no valid ad in <#${cfg.adChannelId}>. We’ll keep checking silently — we won’t notify you again until it’s fixed.`,
           );
           continue;
         }
@@ -319,10 +342,9 @@ async function tick(client) {
         const whitelisted = await getWhitelistedDomains();
         const adReason = validateAd(rawAd, whitelisted);
         if (adReason) {
-          await logOnce(
+          await logAndEdit(
             guildId, 'bad_ad', guild, cfg,
             `⚠️ **Auto-Wave:** Your ad was skipped because it contains a non-whitelisted link. Make sure your ad only contains \`discord.gg\` invite links.`,
-            `⚠️ **Auto-Wave:** Ad still failing validation. We’ll keep checking silently — we won’t notify you again until it’s fixed.`,
           );
           continue;
         }
@@ -373,10 +395,9 @@ async function tick(client) {
     }
 
     if (!matchedB) {
-      await logOnce(
+      await logAndEdit(
         serverA.guildId, 'no_match', serverA.guild, serverA.cfg,
-        `⏳ **Auto-Wave:** We searched the network, but no eligible partners were found this tick. The network will try again later.`,
-        `⏳ **Auto-Wave:** Still no eligible partners found. We’ll keep trying silently — we won’t notify you again until a match is found.`,
+        `⏳ **Auto-Wave:** No eligible partners found this tick. The network will try again later.`,
       );
       return;
     }
@@ -401,10 +422,9 @@ async function tick(client) {
       });
       successA = true;
     } catch {
-      await logOnce(
+      await logAndEdit(
         serverA.guildId, 'post_fail', serverA.guild, serverA.cfg,
         `⚠️ **Auto-Wave:** Failed to post an incoming partner ad. Check bot permissions in <#${serverA.cfg.partnerChannelId}>.`,
-        `⚠️ **Auto-Wave:** Still failing to post ads. Fix permissions in <#${serverA.cfg.partnerChannelId}> — we won't notify you again until it's resolved.`,
       );
     }
 
@@ -418,10 +438,9 @@ async function tick(client) {
       });
       successB = true;
     } catch {
-      await logOnce(
+      await logAndEdit(
         matchedB.guildId, 'post_fail', matchedB.guild, matchedB.cfg,
         `⚠️ **Auto-Wave:** Failed to post an incoming partner ad. Check bot permissions in <#${matchedB.cfg.partnerChannelId}>.`,
-        `⚠️ **Auto-Wave:** Still failing to post ads. Fix permissions in <#${matchedB.cfg.partnerChannelId}> — we won't notify you again until it's resolved.`,
       );
     }
 
@@ -448,15 +467,13 @@ async function tick(client) {
         await msgB.delete().catch(() => {});
       }
 
-      await logOnce(
+      await logAndEdit(
         serverA.guildId, 'trade_fail', serverA.guild, serverA.cfg,
-        `⏳ **Auto-Wave:** We found a match (**${matchedB.guild.name}**), but the trade failed due to a permission error on one side. The trade was safely cancelled.`,
-        `⏳ **Auto-Wave:** Trades are still failing. Fix bot permissions — we won't notify you again until a trade succeeds.`,
+        `⏳ **Auto-Wave:** Found a match (**${matchedB.guild.name}**) but the trade failed due to a permission error. Safely cancelled.`,
       );
-      await logOnce(
+      await logAndEdit(
         matchedB.guildId, 'trade_fail', matchedB.guild, matchedB.cfg,
-        `⏳ **Auto-Wave:** We found a match (**${serverA.guild.name}**), but the trade failed due to a permission error on one side. The trade was safely cancelled.`,
-        `⏳ **Auto-Wave:** Trades are still failing. Fix bot permissions — we won't notify you again until a trade succeeds.`,
+        `⏳ **Auto-Wave:** Found a match (**${serverA.guild.name}**) but the trade failed due to a permission error. Safely cancelled.`,
       );
     }
 
