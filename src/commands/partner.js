@@ -268,6 +268,11 @@ module.exports = {
     .addSubcommand(sub =>
       sub.setName('edit')
         .setDescription('Edit the channel ID or label of a registered guild')
+    )
+
+    .addSubcommand(sub =>
+      sub.setName('reqs')
+        .setDescription('Show the Auto-Wave ping requirements for this server based on its member count')
     ),
 
   // ─── Execute ─────────────────────────────────────────────────────────────────
@@ -275,6 +280,64 @@ module.exports = {
   async execute(interaction) {
     const sub    = interaction.options.getSubcommand();
     const userId = interaction.user.id;
+
+    // ── /partner reqs ─────────────────────────────────────────────────────────
+    if (sub === 'reqs') {
+      const n = interaction.guild?.memberCount ?? 0;
+
+      // Build tier breakpoints based on server size
+      let rows;
+      if (n >= 500) {
+        const t1 = Math.ceil(n * 0.38);
+        const t2 = Math.ceil(n * 0.51);
+        const t3 = Math.ceil(n * 0.71);
+        const t4 = Math.ceil(n * 0.92);
+        rows = [
+          [`0 - ${t1 - 1}`,      'Nothing'],
+          [`${t1} - ${t2 - 1}`,  'Partner Ping'],
+          [`${t2} - ${t3 - 1}`,  '@here'],
+          [`${t3} - ${t4 - 1}`,  'Partner Ping + @here'],
+          [`${t4}+`,             'Member Role'],
+        ];
+      } else if (n >= 200) {
+        const t1 = Math.ceil(n * 0.20);
+        const t2 = Math.ceil(n * 0.40);
+        const t3 = Math.ceil(n * 0.60);
+        const t4 = Math.ceil(n * 0.90);
+        rows = [
+          [`0 - ${t1 - 1}`,      'Nothing'],
+          [`${t1} - ${t2 - 1}`,  'Partner Ping'],
+          [`${t2} - ${t3 - 1}`,  '@here'],
+          [`${t3} - ${t4 - 1}`,  'Partner Ping + @here'],
+          [`${t4}+`,             'Member Role'],
+        ];
+      } else if (n >= 50) {
+        const t1 = Math.ceil(n * 0.50);
+        const t2 = Math.ceil(n * 0.85);
+        rows = [
+          [`0 - ${t1 - 1}`,  'Partner Ping'],
+          [`${t1} - ${t2 - 1}`, '@here'],
+          [`${t2}+`,         'Member Role'],
+        ];
+      } else {
+        const t1 = Math.ceil(n * 0.85);
+        rows = [
+          [`0 - ${t1 - 1}`, 'Partner Ping'],
+          [`${t1}+`,         'Member Role'],
+        ];
+      }
+
+      // Format as a fixed-width code block table
+      const col1 = Math.max(...rows.map(r => r[0].length), 'Incoming members'.length);
+      const header = `${'Incoming members'.padEnd(col1)}  Ping`;
+      const divider = '-'.repeat(col1) + '  ' + '-'.repeat(20);
+      const lines = rows.map(([range, ping]) => `${range.padEnd(col1)}  ${ping}`);
+
+      return interaction.reply({
+        content: `**Ping Requirements — ${n} members**\n\`\`\`\n${header}\n${divider}\n${lines.join('\n')}\n\`\`\``,
+        ephemeral: true,
+      });
+    }
 
     // ── /partner setup & add ──────────────────────────────────────────────────
     if (sub === 'setup' || sub === 'add') {
