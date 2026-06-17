@@ -134,43 +134,73 @@ function validateAd(adContent, whitelistedDomains) {
 }
 
 // ─── Ping resolver ────────────────────────────────────────────────────────────
-// Returns { ping: string, allowedMentions: object }
-// Tiers based on RECEIVING server's absolute member count (matches /help):
-//   < 100   → no ping
-//   100–499 → @here
-//   500–999 → Partner Ping Role
-//   1,000+  → Member Role
+// Returns { ping: string|null, allowedMentions: object }
+//
+// Ping level is based on the RATIO of source (sender) to target (receiver).
+// The bigger the incoming server is relative to yours, the more you ping.
+// Thresholds scale with the receiving server's absolute size:
+//
+//  Large  (500+)  : < 0.38 nothing | 0.38 partner | 0.51 @here | 0.71 p+here | 0.92 member
+//  Medium (200+)  : < 0.20 nothing | 0.20 partner | 0.40 @here | 0.60 p+here | 0.90 member
+//  Sm-Med  (50+)  : < 0.50 partner | 0.50 @here   | 0.85 member
+//  Small  (< 50)  : < 0.85 partner | 0.85 member
 
 async function resolvePing(sourceGuild, targetGuild, targetCfg) {
   // Ping disabled for this server
   if (targetCfg.pingEnabled === false) {
-    return { ping: '', allowedMentions: { parse: [] } };
+    return { ping: null, allowedMentions: { parse: [] } };
   }
 
-  const count = targetGuild.memberCount;
+  const n     = targetGuild.memberCount;      // receiving server size
+  const m     = sourceGuild.memberCount;      // sending server size
+  const ratio = m / Math.max(n, 1);          // how big is sender relative to receiver
 
-  if (count < 100) {
-    // No ping for very small servers
-    return { ping: '', allowedMentions: { parse: [] } };
+  // Level: 0=nothing, 1=partner ping, 2=@here, 3=partner+@here, 4=member role
+  let level;
+
+  if (n >= 500) {
+    if      (ratio >= 0.92) level = 4;
+    else if (ratio >= 0.71) level = 3;
+    else if (ratio >= 0.51) level = 2;
+    else if (ratio >= 0.38) level = 1;
+    else                    level = 0;
+  } else if (n >= 200) {
+    if      (ratio >= 0.90) level = 4;
+    else if (ratio >= 0.60) level = 3;
+    else if (ratio >= 0.40) level = 2;
+    else if (ratio >= 0.20) level = 1;
+    else                    level = 0;
+  } else if (n >= 50) {
+    if      (ratio >= 0.85) level = 4;
+    else if (ratio >= 0.50) level = 2;
+    else                    level = 1;
+  } else {
+    // Small server (< 50)
+    level = ratio >= 0.85 ? 4 : 1;
   }
 
-  if (count < 500) {
-    // @here for small servers
+  if (level === 0) return { ping: null, allowedMentions: { parse: [] } };
+
+  const partnerRole = targetCfg.partnerPingRoleId
+    ? targetGuild.roles.cache.get(targetCfg.partnerPingRoleId) : null;
+  const memberRole = targetCfg.memberRoleId
+    ? targetGuild.roles.cache.get(targetCfg.memberRoleId) : null;
+
+  if (level === 1) {
+    if (partnerRole) return { ping: `<@&${partnerRole.id}>`, allowedMentions: { roles: [partnerRole.id] } };
+    return { ping: null, allowedMentions: { parse: [] } };
+  }
+  if (level === 2) {
     return { ping: '@here', allowedMentions: { parse: ['everyone'] } };
   }
-
-  if (count < 1000) {
-    // Partner Ping Role for medium servers
-    const role = targetGuild.roles.cache.get(targetCfg.partnerPingRoleId);
-    if (role) return { ping: `<@&${role.id}>`, allowedMentions: { roles: [role.id] } };
-    // Fallback to @here if role missing
-    return { ping: '@here', allowedMentions: { parse: ['everyone'] } };
+  if (level === 3) {
+    const parts = [], roles = [];
+    if (partnerRole) { parts.push(`<@&${partnerRole.id}>`); roles.push(partnerRole.id); }
+    parts.push('@here');
+    return { ping: parts.join(' '), allowedMentions: { parse: ['everyone'], roles } };
   }
-
-  // Member Role for large servers (1,000+)
-  const role = targetGuild.roles.cache.get(targetCfg.memberRoleId);
-  if (role) return { ping: `<@&${role.id}>`, allowedMentions: { roles: [role.id] } };
-  // Fallback to @here if role missing
+  // level 4 — member role
+  if (memberRole) return { ping: `<@&${memberRole.id}>`, allowedMentions: { roles: [memberRole.id] } };
   return { ping: '@here', allowedMentions: { parse: ['everyone'] } };
 }
 
