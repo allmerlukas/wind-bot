@@ -401,7 +401,11 @@ async function tick(client) {
       });
       successA = true;
     } catch {
-      await logToGuild(serverA.guild, serverA.cfg, `⚠️ **Auto-Wave:** Failed to post incoming partner ad. Check bot permissions in <#${serverA.cfg.partnerChannelId}>.`);
+      await logOnce(
+        serverA.guildId, 'post_fail', serverA.guild, serverA.cfg,
+        `⚠️ **Auto-Wave:** Failed to post an incoming partner ad. Check bot permissions in <#${serverA.cfg.partnerChannelId}>.`,
+        `⚠️ **Auto-Wave:** Still failing to post ads. Fix permissions in <#${serverA.cfg.partnerChannelId}> — we won't notify you again until it's resolved.`,
+      );
     }
 
     let successB = false;
@@ -414,7 +418,11 @@ async function tick(client) {
       });
       successB = true;
     } catch {
-      await logToGuild(matchedB.guild, matchedB.cfg, `⚠️ **Auto-Wave:** Failed to post incoming partner ad. Check bot permissions in <#${matchedB.cfg.partnerChannelId}>.`);
+      await logOnce(
+        matchedB.guildId, 'post_fail', matchedB.guild, matchedB.cfg,
+        `⚠️ **Auto-Wave:** Failed to post an incoming partner ad. Check bot permissions in <#${matchedB.cfg.partnerChannelId}>.`,
+        `⚠️ **Auto-Wave:** Still failing to post ads. Fix permissions in <#${matchedB.cfg.partnerChannelId}> — we won't notify you again until it's resolved.`,
+      );
     }
 
     if (successA && successB) {
@@ -425,9 +433,10 @@ async function tick(client) {
       // Reset all spam counters on successful trade
       clearSpam(serverA.guildId, 'no_match');
       clearSpam(matchedB.guildId, 'no_match');
-
-      await logToGuild(serverA.guild, serverA.cfg, `✅ **Auto-Wave:** You partnered with **${matchedB.guild.name}**! Their ad was posted in <#${serverA.cfg.partnerChannelId}>, and your ad was posted in their server.`);
-      await logToGuild(matchedB.guild, matchedB.cfg, `✅ **Auto-Wave:** You partnered with **${serverA.guild.name}**! Their ad was posted in <#${matchedB.cfg.partnerChannelId}>, and your ad was posted in their server.`);
+      clearSpam(serverA.guildId, 'post_fail');
+      clearSpam(matchedB.guildId, 'post_fail');
+      clearSpam(serverA.guildId, 'trade_fail');
+      clearSpam(matchedB.guildId, 'trade_fail');
     } else {
       // Rollback: mark messages as bot-deleted so messageDelete won't issue strikes
       if (successA && msgA) {
@@ -439,8 +448,16 @@ async function tick(client) {
         await msgB.delete().catch(() => {});
       }
 
-      await logToGuild(serverA.guild, serverA.cfg, `⏳ **Auto-Wave:** We found a match (**${matchedB.guild.name}**), but the trade failed due to permission errors on one side. The trade was safely cancelled.`);
-      await logToGuild(matchedB.guild, matchedB.cfg, `⏳ **Auto-Wave:** We found a match (**${serverA.guild.name}**), but the trade failed due to permission errors on one side. The trade was safely cancelled.`);
+      await logOnce(
+        serverA.guildId, 'trade_fail', serverA.guild, serverA.cfg,
+        `⏳ **Auto-Wave:** We found a match (**${matchedB.guild.name}**), but the trade failed due to a permission error on one side. The trade was safely cancelled.`,
+        `⏳ **Auto-Wave:** Trades are still failing. Fix bot permissions — we won't notify you again until a trade succeeds.`,
+      );
+      await logOnce(
+        matchedB.guildId, 'trade_fail', matchedB.guild, matchedB.cfg,
+        `⏳ **Auto-Wave:** We found a match (**${serverA.guild.name}**), but the trade failed due to a permission error on one side. The trade was safely cancelled.`,
+        `⏳ **Auto-Wave:** Trades are still failing. Fix bot permissions — we won't notify you again until a trade succeeds.`,
+      );
     }
 
   } catch (err) {
