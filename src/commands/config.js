@@ -130,8 +130,7 @@ const STEPS = [
   {
     id:          'cfg_memberrange',
     label:       '👥 Member Count Range (optional)',
-    description: 'Only Auto-Wave with servers in this member count range. Your server must also qualify.
-Format: `min-max` (e.g. `100-5000`). Leave blank / skip to allow any size.',
+    description: 'Only Auto-Wave with servers in this member count range. Your server must also qualify.\nFormat: `min-max` (e.g. `100-5000`). Leave blank / skip to allow any size.',
     storeKey:    'minMembers',
     type:        'modal',
     inputLabel:  'Member range (e.g. 100-5000, or leave blank)',
@@ -140,10 +139,7 @@ Format: `min-max` (e.g. `100-5000`). Leave blank / skip to allow any size.',
   {
     id:          'cfg_paid_ads',
     label:       '📣 Paid Advertisements',
-    description: 'Allow Wind Bot to post **paid advertisements** from the network in your partner channel?
-
-These are manually approved ads from paying customers — separate from regular Auto-Wave partners.
-You can change this anytime by running `/config setup` again.',
+    description: 'Allow Wind Bot to post **paid advertisements** from the network in your partner channel?\n\nThese are manually approved ads from paying customers — separate from regular Auto-Wave partners.\nYou can change this anytime by running `/config setup` again.',
     type:        'boolean',
     storeKey:    'allowPaidAds',
   },

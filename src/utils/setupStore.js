@@ -18,6 +18,7 @@ const KEY_MAP = {
   maxMembers:        'max_members',
   strikes:           'strikes',
   pingEnabled:       'ping_enabled',
+  allowPaidAds:      'allow_paid_ads',
 };
 
 const COL_MAP = Object.fromEntries(Object.entries(KEY_MAP).map(([k, v]) => [v, k]));
