@@ -130,11 +130,22 @@ const STEPS = [
   {
     id:          'cfg_memberrange',
     label:       '👥 Member Count Range (optional)',
-    description: 'Only Auto-Wave with servers in this member count range. Your server must also qualify.\nFormat: `min-max` (e.g. `100-5000`). Leave blank / skip to allow any size.',
-    storeKey:    'minMembers', // used only for "is step complete" detection
+    description: 'Only Auto-Wave with servers in this member count range. Your server must also qualify.
+Format: `min-max` (e.g. `100-5000`). Leave blank / skip to allow any size.',
+    storeKey:    'minMembers',
     type:        'modal',
     inputLabel:  'Member range (e.g. 100-5000, or leave blank)',
     inputId:     'cfg_memberrange_input',
+  },
+  {
+    id:          'cfg_paid_ads',
+    label:       '📣 Paid Advertisements',
+    description: 'Allow Wind Bot to post **paid advertisements** from the network in your partner channel?
+
+These are manually approved ads from paying customers — separate from regular Auto-Wave partners.
+You can change this anytime by running `/config setup` again.',
+    type:        'boolean',
+    storeKey:    'allowPaidAds',
   },
 ];
 
@@ -181,7 +192,6 @@ async function buildStepMessage(guildId, stepIndex) {
       )
     );
   } else if (step.type === 'modal') {
-    // Determine button label based on which step this is
     const isRangeStep = step.id === 'cfg_memberrange';
     rows.push(
       new ActionRowBuilder().addComponents(
@@ -190,6 +200,19 @@ async function buildStepMessage(guildId, stepIndex) {
           .setLabel(isRangeStep ? 'Set Member Range' : 'Set Delay Hours')
           .setStyle(ButtonStyle.Primary)
           .setEmoji(isRangeStep ? '👥' : '⏱️')
+      )
+    );
+  } else if (step.type === 'boolean') {
+    rows.push(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`${step.id}_yes:${stepIndex}`)
+          .setLabel('Yes — allow paid ads')
+          .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId(`${step.id}_no:${stepIndex}`)
+          .setLabel('No — partners only')
+          .setStyle(ButtonStyle.Danger),
       )
     );
   }
@@ -228,6 +251,7 @@ async function buildSummary(guildId) {
     { name: '🔔 Partner Ping Role',   value: cfg.partnerPingRoleId  ? `<@&${cfg.partnerPingRoleId}>` : '`not set`', inline: true },
     { name: '⏱️ Partner Delay',       value: `${cfg.partnerDelayHours ?? 24}h`,                       inline: true },
     { name: '👥 Member Range',        value: (cfg.minMembers != null && cfg.maxMembers != null) ? `${cfg.minMembers}–${cfg.maxMembers} members` : '`any size`', inline: true },
+    { name: '📣 Paid Ads',           value: cfg.allowPaidAds ? '`allowed`' : '`not allowed`',                inline: true },
   ];
 
   const isReady = cfg.partnerChannelId && cfg.adChannelId && cfg.logChannelId && cfg.memberRoleId && cfg.partnerPingRoleId && cfg.partnerDelayHours;
@@ -282,6 +306,7 @@ module.exports = {
           { name: '🔔 Partner Ping Role',   value: cfg.partnerPingRoleId  ? `<@&${cfg.partnerPingRoleId}>` : '`not set`', inline: true },
           { name: '⏱️ Partner Delay',       value: `${cfg.partnerDelayHours ?? 24}h`,                       inline: true },
           { name: '👥 Member Range',        value: (cfg.minMembers != null && cfg.maxMembers != null) ? `${cfg.minMembers}–${cfg.maxMembers} members` : '`any size`', inline: true },
+          { name: '📣 Paid Ads',           value: cfg.allowPaidAds ? '`allowed`' : '`not allowed`', inline: true },
           {
             name:  isReady ? '✅ Status' : '❌ Status',
             value: isReady

@@ -200,6 +200,18 @@ module.exports = {
         return interaction.update({ embeds: [await buildSummary(interaction.guildId)], components: [] });
       }
 
+      // ── Config wizard: paid ads Yes/No buttons ────────────────────────────────────────────
+      if (interaction.isButton() && (interaction.customId.startsWith('cfg_paid_ads_yes:') || interaction.customId.startsWith('cfg_paid_ads_no:'))) {
+        const stepIndex = parseInt(interaction.customId.split(':')[1], 10);
+        const allow     = interaction.customId.startsWith('cfg_paid_ads_yes:');
+        await setupStore.set(interaction.guildId, 'allowPaidAds', allow);
+        const nextStep = stepIndex + 1;
+        if (nextStep >= STEPS.length) {
+          return interaction.update({ embeds: [await buildSummary(interaction.guildId)], components: [] });
+        }
+        return interaction.update(await buildStepMessage(interaction.guildId, nextStep));
+      }
+
       // ── Select menu: wave paste picker ───────────────────────────────────────
       if (interaction.isStringSelectMenu()) {
         if (interaction.customId === 'wave_paste_select') {

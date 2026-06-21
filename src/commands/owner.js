@@ -79,14 +79,23 @@ module.exports = {
         .setDescription('Show Auto-Wave config status across all guilds')
     )
 
-    // broadcast (merged — DMs owner if no log channel)
+    // broadcast
     .addSubcommand(sub =>
       sub.setName('broadcast')
-        .setDescription("Send a message to every guild's log channel (auto-DMs owner if no log channel)")
+        .setDescription('Send a message to all servers — choose log channel or partner channel')
         .addStringOption(opt =>
           opt.setName('message')
-            .setDescription('Message to broadcast')
+            .setDescription('Message to send')
             .setRequired(true)
+        )
+        .addStringOption(opt =>
+          opt.setName('destination')
+            .setDescription('Where to send it')
+            .setRequired(true)
+            .addChoices(
+              { name: 'Log channel — all servers (general broadcast)', value: 'log' },
+              { name: 'Partner channel — opted-in only (paid ad)',     value: 'partner' },
+            )
         )
     )
 
@@ -283,42 +292,46 @@ module.exports = {
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
-    // ── /owner broadcast (merged — falls back to DM if no log channel) ────────
+    // ── /owner broadcast ──────────────────────────────────────────────────────
     if (sub === 'broadcast') {
-      const message = interaction.options.getString('message');
+      const message     = interaction.options.getString('message');
+      const destination = interaction.options.getString('destination');
       await interaction.deferReply({ ephemeral: true });
 
-      let sentLog = 0, sentDm = 0, failed = 0;
+      let sent = 0, skipped = 0, failed = 0;
 
       for (const guild of client.guilds.cache.values()) {
         const cfg = await setupStore.get(guild.id);
-        const ch  = cfg.logChannelId ? guild.channels.cache.get(cfg.logChannelId) : null;
 
-        if (ch?.isTextBased()) {
-          // Try log channel first
-          try {
-            await ch.send(`📢 **[Owner Broadcast]**\n${message}`);
-            sentLog++;
-          } catch {
-            // Log channel failed — fall back to DM
-            try {
-              const owner = await client.users.fetch(guild.ownerId);
-              await owner.send(`📢 **[Wind Bot Broadcast]** *(from ${guild.name})*\n${message}`);
-              sentDm++;
-            } catch { failed++; }
-          }
+        if (destination === 'partner') {
+          // Paid ad: only servers that opted in, sent to partner channel
+          if (!cfg.allowPaidAds) { skipped++; continue; }
+          const ch = cfg.partnerChannelId ? guild.channels.cache.get(cfg.partnerChannelId) : null;
+          if (ch?.isTextBased()) {
+            try { await ch.send(`📢 **[Paid Advertisement]**\n${message}`); sent++; }
+            catch { failed++; }
+          } else { failed++; }
         } else {
-          // No log channel — DM the server owner
-          try {
-            const owner = await client.users.fetch(guild.ownerId);
-            await owner.send(`📢 **[Wind Bot Broadcast]** *(from ${guild.name})*\n${message}`);
-            sentDm++;
-          } catch { failed++; }
+          // General broadcast: all servers, sent to log channel (DM owner as fallback)
+          const ch = cfg.logChannelId ? guild.channels.cache.get(cfg.logChannelId) : null;
+          if (ch?.isTextBased()) {
+            try { await ch.send(`📢 **[Wind Bot Broadcast]**\n${message}`); sent++; }
+            catch {
+              try { const owner = await client.users.fetch(guild.ownerId); await owner.send(`📢 **[Wind Bot Broadcast]**\n${message}`); sent++; }
+              catch { failed++; }
+            }
+          } else {
+            try { const owner = await client.users.fetch(guild.ownerId); await owner.send(`📢 **[Wind Bot Broadcast]**\n${message}`); sent++; }
+            catch { failed++; }
+          }
         }
       }
 
+      const label = destination === 'partner'
+        ? `partner channels (${skipped} server(s) opted out)`
+        : 'log channels — all servers';
       return interaction.editReply({
-        content: `📢 **Broadcast complete.**\n✅ Log channel: **${sentLog}** | 📩 DM fallback: **${sentDm}** | ❌ Failed: **${failed}**`,
+        content: `📢 **Broadcast complete** — ${label}\n✅ Sent: **${sent}** | ❌ Failed: **${failed}**`,
       });
     }
 
