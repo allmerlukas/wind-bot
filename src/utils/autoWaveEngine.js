@@ -249,38 +249,51 @@ const incompleteDmCache = new Map();
 
 // Tracks repeated log messages per guild.
 // Key: `${guildId}:${messageType}`, value: { count, messageId, channelId }
-// On first call: sends the message. On subsequent calls: edits it with try(x).
+// Persists in memory; on restart we fall back to scanning the log channel.
 const spamCache = new Map();
 
 async function logAndEdit(guildId, type, guild, cfg, msg) {
   const key   = `${guildId}:${type}`;
   const entry = spamCache.get(key) ?? { count: 0, messageId: null, channelId: null };
-  entry.count++;
 
-  const text = entry.count === 1 ? msg : `${msg} try(${entry.count})`;
-
-  // Try editing the existing message first
-  if (entry.messageId && entry.channelId) {
-    try {
-      const ch = guild.channels.cache.get(entry.channelId);
-      if (ch?.isTextBased()) {
-        const existing = await ch.messages.fetch(entry.messageId);
-        await existing.edit(text);
-        spamCache.set(key, entry);
-        return;
-      }
-    } catch { /* message deleted or inaccessible — fall through to send a new one */ }
-  }
-
-  // Send a fresh message
   const logCh = cfg.logChannelId ? guild.channels.cache.get(cfg.logChannelId) : null;
-  if (logCh?.isTextBased()) {
+  if (!logCh?.isTextBased()) return;
+
+  // If we have a stored message ID, try editing it
+  if (entry.messageId) {
     try {
-      const sent = await logCh.send(text);
-      entry.messageId = sent.id;
-      entry.channelId = sent.channelId;
-    } catch { /* ignore */ }
+      const existing = await logCh.messages.fetch(entry.messageId);
+      entry.count++;
+      await existing.edit(`${msg} try(${entry.count})`);
+      spamCache.set(key, entry);
+      return;
+    } catch { /* message gone — fall through */ }
   }
+
+  // No stored ID (e.g. after restart) — check if the last message in the
+  // log channel is already this bot's error message for this type.
+  try {
+    const recent = await logCh.messages.fetch({ limit: 1 });
+    const last   = recent.first();
+    if (last && last.author.id === guild.client.user.id && last.content.startsWith(msg.slice(0, 40))) {
+      // Parse existing try count from the message
+      const match = last.content.match(/try\((\d+)\)$/);
+      entry.count       = match ? parseInt(match[1], 10) + 1 : 2;
+      entry.messageId   = last.id;
+      entry.channelId   = last.channelId;
+      await last.edit(`${msg} try(${entry.count})`);
+      spamCache.set(key, entry);
+      return;
+    }
+  } catch { /* ignore */ }
+
+  // Send a brand new message
+  entry.count = 1;
+  try {
+    const sent        = await logCh.send(msg);
+    entry.messageId   = sent.id;
+    entry.channelId   = sent.channelId;
+  } catch { /* ignore */ }
 
   spamCache.set(key, entry);
 }
@@ -288,6 +301,7 @@ async function logAndEdit(guildId, type, guild, cfg, msg) {
 function clearSpam(guildId, type) {
   spamCache.delete(`${guildId}:${type}`);
 }
+
 
 // ─── Main tick ────────────────────────────────────────────────────────────────
 
