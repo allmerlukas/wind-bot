@@ -258,6 +258,8 @@ module.exports = {
 
     // ── /owner autowave ───────────────────────────────────────────────────────
     if (sub === 'autowave') {
+      await interaction.deferReply({ ephemeral: true });
+
       const guilds   = [...client.guilds.cache.values()];
       const enrolled = [];
       const missing  = [];
@@ -289,7 +291,7 @@ module.exports = {
         .setDescription(desc.slice(0, 4000))
         .setTimestamp();
 
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      return interaction.editReply({ embeds: [embed] });
     }
 
     // ── /owner broadcast ──────────────────────────────────────────────────────
