@@ -200,10 +200,50 @@ module.exports = {
         return interaction.update({ embeds: [await buildSummary(interaction.guildId)], components: [] });
       }
 
-      // ── Config wizard: paid ads Yes/No buttons ────────────────────────────────────────────
-      if (interaction.isButton() && (interaction.customId.startsWith('cfg_paid_ads_yes:') || interaction.customId.startsWith('cfg_paid_ads_no:'))) {
+      // ── Config wizard: paid ads — Yes saves immediately, No shows guilt-trip ──
+      if (interaction.isButton() && interaction.customId.startsWith('cfg_paid_ads_yes:')) {
         const stepIndex = parseInt(interaction.customId.split(':')[1], 10);
-        const allow     = interaction.customId.startsWith('cfg_paid_ads_yes:');
+        await setupStore.set(interaction.guildId, 'allowPaidAds', true);
+        const nextStep = stepIndex + 1;
+        if (nextStep >= STEPS.length) {
+          return interaction.update({ embeds: [await buildSummary(interaction.guildId)], components: [] });
+        }
+        return interaction.update(await buildStepMessage(interaction.guildId, nextStep));
+      }
+
+      if (interaction.isButton() && interaction.customId.startsWith('cfg_paid_ads_no:')) {
+        const stepIndex = interaction.customId.split(':')[1];
+        return interaction.update({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(0xED4245)
+              .setTitle('🙏 Are you sure?')
+              .setDescription(
+                `I host this bot for **$5 a month** out of my own pocket.\n` +
+                `The bot is **completely free** for you to use.\n\n` +
+                `Allowing paid ads costs you nothing, it just means the occasional sponsored post shows up in your partner channel, exactly like a regular partner ad.\n\n` +
+                `Help a brother out 😭🙏`
+              ),
+          ],
+          components: [
+            new ActionRowBuilder().addComponents(
+              new ButtonBuilder()
+                .setCustomId(`cfg_paid_ads_confirm_yes:${stepIndex}`)
+                .setLabel('Fine, I\'ll allow it 🙏')
+                .setStyle(ButtonStyle.Success),
+              new ButtonBuilder()
+                .setCustomId(`cfg_paid_ads_confirm_no:${stepIndex}`)
+                .setLabel('No, I\'m heartless')
+                .setStyle(ButtonStyle.Danger),
+            ),
+          ],
+        });
+      }
+
+      // ── Config wizard: paid ads — guilt-trip confirmation ────────────────────
+      if (interaction.isButton() && (interaction.customId.startsWith('cfg_paid_ads_confirm_yes:') || interaction.customId.startsWith('cfg_paid_ads_confirm_no:'))) {
+        const stepIndex = parseInt(interaction.customId.split(':')[1], 10);
+        const allow     = interaction.customId.startsWith('cfg_paid_ads_confirm_yes:');
         await setupStore.set(interaction.guildId, 'allowPaidAds', allow);
         const nextStep = stepIndex + 1;
         if (nextStep >= STEPS.length) {
