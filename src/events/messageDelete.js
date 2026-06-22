@@ -28,6 +28,12 @@ module.exports = {
 
     // Check if the deleted message was in the designated Partner Channel
     if (message.channel.id === cfg.partnerChannelId) {
+      // Only strike if the message actually contained a partner ad (discord.gg invite).
+      // Bot wizard/control messages ("Got server 1!", "Wave saved!", etc.) never have
+      // invite links and should never trigger a strike.
+      const hasInvite = /discord\.gg\/[a-zA-Z0-9-]+|discord\.com\/invite\/[a-zA-Z0-9-]+/i.test(message.content ?? '');
+      if (!hasInvite) return;
+
       // It's a partner ad being deleted by a user — issue a strike.
       const currentStrikes = cfg.strikes || 0;
       const newStrikes = currentStrikes + 1;
