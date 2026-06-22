@@ -40,15 +40,19 @@ module.exports = {
         .setTitle('👋 Thanks for adding Wind Bot!')
         .setDescription(
           `Hi there! I noticed you just added me to **${guild.name}**.\n\n` +
-          `Do you need help using the bot? Use the \`/help\` command in your server to see everything I can do!\n\n` +
-          `If you're looking to set up the Auto-Wave partner system, run \`/config setup\` in your server to get started.`
+          `Use \`/help\` in your server to see everything I can do, and run \`/config setup\` to join the Auto-Wave partner network.\n\n` +
+          `**💬 Need help?**\n` +
+          `Join our support server — the team is there to help you with setup and any questions.\n` +
+          `[Join Support Server](https://discord.gg/mK2PnterFn)\n\n` +
+          `**⭐ Enjoying the bot?**\n` +
+          `Voting takes 10 seconds, it's completely free, and it helps Wind Bot reach more servers. Every vote makes a real difference.\n` +
+          `[Vote on Top.gg](https://top.gg/bot/1503116214321545226?s=0c5553caea9a1)`
         )
-        .setFooter({ text: 'Wind Bot' })
+        .setFooter({ text: 'Wind Bot • Automated partner system' })
         .setTimestamp();
 
       await user.send({ embeds: [embed] }).catch(() => {
         // Cannot DM user (DMs disabled)
-        console.log(`[GuildCreate] Failed to DM ${user.tag} (DMs disabled).`);
       });
 
     } catch (err) {
