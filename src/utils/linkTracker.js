@@ -11,10 +11,11 @@ function getDateKey(offsetDays = 0) {
 }
 
 function extractLinks(content) {
-  const urlRegex = /https?:\/\/[^\s<>")\]]+/gi;
-  const matches  = content.match(urlRegex) || [];
-  const normalized = matches.map(url => url.replace(/[.,;!?'"]+$/, '').toLowerCase());
-  return [...new Set(normalized)];
+  // Only count discord.gg / discord.com/invite links — not tenor GIFs or any other URLs
+  const inviteRegex = /(?:https?:\/\/)?(?:www\.)?discord\.gg\/([a-zA-Z0-9-]+)|(?:https?:\/\/)?discord\.com\/invite\/([a-zA-Z0-9-]+)/gi;
+  const matches = [...content.matchAll(inviteRegex)];
+  const codes = matches.map(m => `discord.gg/${(m[1] || m[2]).toLowerCase()}`);
+  return [...new Set(codes)];
 }
 
 /**
