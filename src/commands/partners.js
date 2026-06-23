@@ -47,7 +47,7 @@ module.exports = {
 
     // ── /partners leaderboard ─────────────────────────────────────────────────
     if (sub === 'leaderboard') {
-      const data = getAllPartners();
+      const data = await getAllPartners();
       const sorted = Object.entries(data)
         .map(([id, info]) => ({ id, ...info }))
         .sort((a, b) => b.totalPartners - a.totalPartners)
