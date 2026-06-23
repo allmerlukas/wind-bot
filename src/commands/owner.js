@@ -390,6 +390,7 @@ module.exports = {
 
     // ── /owner check ───────────────────────────────────────────────────────────────
     if (sub === 'check') {
+      await interaction.deferReply({ ephemeral: true });
       const guildId    = interaction.options.getString('guild_id');
       const guild      = client.guilds.cache.get(guildId);
       const cfg        = await setupStore.get(guildId);
@@ -416,17 +417,18 @@ module.exports = {
         )
         .setTimestamp();
 
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      return interaction.editReply({ embeds: [embed] });
     }
 
     // ── /owner error ──────────────────────────────────────────────────────────
     if (sub === 'error') {
+      await interaction.deferReply({ ephemeral: true });
       const count  = interaction.options.getInteger('count') ?? 10;
       const errors = await getRecentErrors(count);
       const total  = await getErrorCount();
 
       if (errors.length === 0) {
-        return interaction.reply({ content: '✅ No errors logged — all good!', ephemeral: true });
+        return interaction.editReply({ content: '✅ No errors logged — all good!' });
       }
 
       const lines = errors.map(e => {
@@ -444,7 +446,7 @@ module.exports = {
         .setFooter({ text: `Showing last ${count} • Max stored: 200` })
         .setTimestamp();
 
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      return interaction.editReply({ embeds: [embed] });
     }
 
     // ── /owner blacklist-add ──────────────────────────────────────────────────

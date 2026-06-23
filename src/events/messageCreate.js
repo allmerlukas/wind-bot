@@ -37,7 +37,7 @@ module.exports = {
         const { adIndex } = deadLinks[queueIdx];
 
         // Update this ad
-        waveStore.updateAd(message.author.id, waveKey, adIndex, content);
+        await waveStore.updateAd(message.author.id, waveKey, adIndex, content);
 
         const nextIdx = queueIdx + 1;
         if (nextIdx >= deadLinks.length) {
@@ -76,7 +76,7 @@ module.exports = {
 
         if (!content) return;
 
-        waveStore.updateAd(message.author.id, session.waveName, session.serverIndex, stripMaskedLinks(content));
+        await waveStore.updateAd(message.author.id, session.waveName, session.serverIndex, stripMaskedLinks(content));
         waveSessions.endSession(message.author.id);
 
         const r = await message.channel.send(
@@ -98,10 +98,10 @@ module.exports = {
         if (!content) return;
 
         const { waveName, spliceIndex } = session;
-        waveStore.insertAd(message.author.id, waveName, spliceIndex, stripMaskedLinks(content));
+        await waveStore.insertAd(message.author.id, waveName, spliceIndex, stripMaskedLinks(content));
         waveSessions.endSession(message.author.id);
 
-        const wave = waveStore.getWave(message.author.id, waveName);
+        const wave = await waveStore.getWave(message.author.id, waveName);
         const newPos = spliceIndex + 1; // 1-based position of the inserted ad
         const r = await message.channel.send(
           `✅ <@${message.author.id}> New ad inserted as **server ${newPos}**! Wave now has **${wave.ads.length}** server(s).`
@@ -126,7 +126,7 @@ module.exports = {
             setTimeout(() => r.delete().catch(() => {}), 4000);
             return;
           }
-          waveStore.saveWave(message.author.id, ended.waveName, ended.ads);
+          await waveStore.saveWave(message.author.id, ended.waveName, ended.ads);
           const r = await message.channel.send(
             `✅ <@${message.author.id}> Wave saved with **${ended.ads.length}** server(s)! Use \`/wave paste\` to send it.`
           );

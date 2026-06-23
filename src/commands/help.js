@@ -48,10 +48,6 @@ const CATEGORIES = {
         name: '/config view',
         value: 'See your current config at any time — shows all settings and enrollment status.',
       },
-      {
-        name: '/config check',
-        value: '*(Owner only)* See how many servers the bot is in and how many are enrolled in Auto-Wave.',
-      },
     ],
   },
 

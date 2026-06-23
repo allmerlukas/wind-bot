@@ -215,10 +215,10 @@ module.exports = {
         const r2 = await sendAdToTarget(srvB.guild, srvA.guild, srvA.cfg, srvB.ad, client.user.id);
 
         if (r1.ok && r2.ok) {
-          autoWaveStore.setLastReceived(srvA.guild.id);
-          autoWaveStore.setLastReceived(srvB.guild.id);
-          recordPair(srvA.guild.id, srvB.guild.id);
-          recordPair(srvB.guild.id, srvA.guild.id);
+          await autoWaveStore.setLastReceived(srvA.guild.id);
+          await autoWaveStore.setLastReceived(srvB.guild.id);
+          await recordPair(srvA.guild.id, srvB.guild.id);
+          await recordPair(srvB.guild.id, srvA.guild.id);
           results.ok++;
           results.lines.push(`✅ **${srvA.guild.name}** ↔ **${srvB.guild.name}**`);
         } else {

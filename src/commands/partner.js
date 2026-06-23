@@ -351,7 +351,7 @@ module.exports = {
       const isUpdate    = await pmStore.hasGuild(userId, guildId);
       await pmStore.addGuild(userId, guildId, channelId, label);
       const displayName = label ?? `Guild \`${guildId}\``;
-      const total       = await pmStore.getGuilds(userId).length;
+      const total       = (await pmStore.getGuilds(userId)).length;
 
       return interaction.reply({
         content: [

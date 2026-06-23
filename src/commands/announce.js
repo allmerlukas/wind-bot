@@ -38,7 +38,14 @@ module.exports = {
       .setTimestamp();
 
     const content = ping ? `<@&${ping.id}>` : undefined;
-    await channel.send({ content, embeds: [embed] });
+    try {
+      await channel.send({ content, embeds: [embed] });
+    } catch (err) {
+      return interaction.reply({
+        content: `❌ Failed to send announcement to <#${channel.id}>: ${err.message}`,
+        ephemeral: true,
+      });
+    }
 
     return interaction.reply({ content: `✅ Announcement sent to <#${channel.id}>.`, ephemeral: true });
   },

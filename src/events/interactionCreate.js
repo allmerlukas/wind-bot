@@ -256,7 +256,7 @@ module.exports = {
       if (interaction.isStringSelectMenu()) {
         if (interaction.customId === 'wave_paste_select') {
           const waveKey = interaction.values[0];
-          const wave = waveStore.getWave(interaction.user.id, waveKey);
+          const wave = await waveStore.getWave(interaction.user.id, waveKey);
 
           if (!wave) {
             return interaction.update({ content: '❌ Wave not found.', components: [] });
@@ -269,7 +269,7 @@ module.exports = {
 
         if (interaction.customId === 'wave_dm_select') {
           const waveKey = interaction.values[0];
-          const wave = waveStore.getWave(interaction.user.id, waveKey);
+          const wave = await waveStore.getWave(interaction.user.id, waveKey);
 
           if (!wave) {
             return interaction.update({ content: '❌ Wave not found.', components: [] });
@@ -281,7 +281,7 @@ module.exports = {
 
         if (interaction.customId === 'wave_copy_select') {
           const waveKey = interaction.values[0];
-          const wave = waveStore.getWave(interaction.user.id, waveKey);
+          const wave = await waveStore.getWave(interaction.user.id, waveKey);
 
           if (!wave) {
             return interaction.update({ content: '❌ Wave not found.', components: [] });
@@ -311,7 +311,8 @@ module.exports = {
 
           const pmStore  = require('../utils/pmStore');
           const guildId  = interaction.values[0];
-          const guild    = pmStore.getGuilds(userId).find(g => g.guild_id === guildId);
+          const guilds   = await pmStore.getGuilds(userId);
+          const guild    = guilds.find(g => g.guild_id === guildId);
 
           const modal = new ModalBuilder()
             .setCustomId(`pm_edit_modal:${userId}:${guildId}`)
@@ -425,19 +426,24 @@ module.exports = {
 
     // ── /owner leave — select menu response ──────────────────────────────────
     if (interaction.isStringSelectMenu() && interaction.customId === 'owner_leave_select') {
-      const { checkOwner } = require('../utils/ownerGuard');
-      if (!await checkOwner(interaction)) return;
-
-      const guildId = interaction.values[0];
-      const guild   = interaction.client.guilds.cache.get(guildId);
-      if (!guild) return interaction.update({ content: '❌ Server not found.', components: [] });
-
-      const name = guild.name;
       try {
-        await guild.leave();
-        return interaction.update({ content: `👋 Successfully left **${name}**.`, components: [] });
+        const { checkOwner } = require('../utils/ownerGuard');
+        if (!await checkOwner(interaction)) return;
+
+        const guildId = interaction.values[0];
+        const guild   = interaction.client.guilds.cache.get(guildId);
+        if (!guild) return interaction.update({ content: '❌ Server not found.', components: [] });
+
+        const name = guild.name;
+        try {
+          await guild.leave();
+          return interaction.update({ content: `👋 Successfully left **${name}**.`, components: [] });
+        } catch (err) {
+          return interaction.update({ content: `❌ Failed to leave **${name}**: ${err.message}`, components: [] });
+        }
       } catch (err) {
-        return interaction.update({ content: `❌ Failed to leave **${name}**: ${err.message}`, components: [] });
+        console.error('[owner_leave_select]', err);
+        return interaction.update({ content: `❌ Error: ${err.message}`, components: [] }).catch(() => {});
       }
     }
 
