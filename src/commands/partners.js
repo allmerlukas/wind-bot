@@ -29,7 +29,7 @@ module.exports = {
     // ── /partners check ──────────────────────────────────────────────────────
     if (sub === 'check') {
       const target = interaction.options.getUser('user') || interaction.user;
-      const { totalPartners } = getPartners(target.id);
+      const { totalPartners } = await getPartners(target.id);
       const partnerWord = totalPartners === 1 ? 'partner' : 'partners';
 
       const embed = new EmbedBuilder()
