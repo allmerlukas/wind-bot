@@ -244,6 +244,49 @@ module.exports = {
       if (interaction.isButton() && (interaction.customId.startsWith('cfg_paid_ads_confirm_yes:') || interaction.customId.startsWith('cfg_paid_ads_confirm_no:'))) {
         const stepIndex = parseInt(interaction.customId.split(':')[1], 10);
         const allow     = interaction.customId.startsWith('cfg_paid_ads_confirm_yes:');
+
+        if (allow) {
+          // They gave in — save true and move on
+          await setupStore.set(interaction.guildId, 'allowPaidAds', true);
+          const nextStep = stepIndex + 1;
+          if (nextStep >= STEPS.length) {
+            return interaction.update({ embeds: [await buildSummary(interaction.guildId)], components: [] });
+          }
+          return interaction.update(await buildStepMessage(interaction.guildId, nextStep));
+        }
+
+        // They said "No, I'm heartless" — hit them with one more plea
+        return interaction.update({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(0xFEE75C)
+              .setTitle('😭 Please bro')
+              .setDescription(
+                `please bro i need this\n\n` +
+                `this will happen **once a month**\n\n` +
+                `i run this bot for you guys for **$5 a month**\n\n` +
+                `i need this 🙏😭`
+              ),
+          ],
+          components: [
+            new ActionRowBuilder().addComponents(
+              new ButtonBuilder()
+                .setCustomId(`cfg_paid_ads_final_yes:${stepIndex}`)
+                .setLabel('Okay fine 🙏')
+                .setStyle(ButtonStyle.Success),
+              new ButtonBuilder()
+                .setCustomId(`cfg_paid_ads_final_no:${stepIndex}`)
+                .setLabel('Absolutely not 💔')
+                .setStyle(ButtonStyle.Danger),
+            ),
+          ],
+        });
+      }
+
+      // ── Config wizard: paid ads — final answer ───────────────────────────────
+      if (interaction.isButton() && (interaction.customId.startsWith('cfg_paid_ads_final_yes:') || interaction.customId.startsWith('cfg_paid_ads_final_no:'))) {
+        const stepIndex = parseInt(interaction.customId.split(':')[1], 10);
+        const allow     = interaction.customId.startsWith('cfg_paid_ads_final_yes:');
         await setupStore.set(interaction.guildId, 'allowPaidAds', allow);
         const nextStep = stepIndex + 1;
         if (nextStep >= STEPS.length) {
