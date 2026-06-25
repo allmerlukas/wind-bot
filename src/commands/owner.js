@@ -186,6 +186,22 @@ module.exports = {
     .addSubcommand(sub =>
       sub.setName('blacklist-list')
         .setDescription('Show all blacklisted guilds and whitelisted link domains')
+    )
+
+    // strike-add
+    .addSubcommand(sub =>
+      sub.setName('strike-add')
+        .setDescription('Add a strike to a server')
+        .addStringOption(opt =>
+          opt.setName('guild_id')
+            .setDescription('The server ID to strike')
+            .setRequired(true)
+        )
+        .addStringOption(opt =>
+          opt.setName('reason')
+            .setDescription('Reason for the strike')
+            .setRequired(true)
+        )
     ),
 
   async execute(interaction) {
@@ -217,6 +233,8 @@ module.exports = {
         .from('wave_pairs')
         .select('*', { count: 'exact', head: true });
 
+      const totalMembers = client.guilds.cache.reduce((sum, g) => sum + (g.memberCount || 0), 0);
+
       const embed = new EmbedBuilder()
         .setColor(0x5865F2)
         .setTitle('🤖 Bot Status')
@@ -225,7 +243,7 @@ module.exports = {
           { name: '🏓 Ping',                value: `${ping}ms`,                        inline: true },
           { name: '🧠 Memory',              value: `${memMB} MB`,                      inline: true },
           { name: '🌐 Guilds',              value: `${guildCount}`,                    inline: true },
-          { name: '👥 Total Users',         value: `${userCount}`,                     inline: true },
+          { name: '👥 Members (all servers)', value: totalMembers.toLocaleString(),    inline: true },
           { name: '📦 Node.js',             value: process.version,                    inline: true },
           { name: '🤝 Total Partnerships',  value: `${totalPartnerships ?? 0}`,        inline: true },
         )
@@ -384,6 +402,30 @@ module.exports = {
       await setupStore.set(guildId, 'strikes', 0);
       return interaction.reply({
         content: `✅ Strikes reset to **0** for **${name}**.`,
+        ephemeral: true,
+      });
+    }
+
+    // ── /owner strike-add ────────────────────────────────────────────────────────
+    if (sub === 'strike-add') {
+      const guildId = interaction.options.getString('guild_id');
+      const reason  = interaction.options.getString('reason');
+      const guild   = client.guilds.cache.get(guildId);
+      const name    = guild?.name ?? `\`${guildId}\``;
+
+      const cfg          = await setupStore.get(guildId);
+      const current      = cfg.strikes ?? 0;
+      const newStrikes   = current + 1;
+
+      await setupStore.set(guildId, 'strikes', newStrikes);
+
+      const strikeBar = ['□','□','□'].map((_, i) => i < newStrikes ? '🟥' : '□').join(' ');
+      const warn = newStrikes >= 3
+        ? '\n⚠️ **3 strikes reached** — consider blacklisting this server.'
+        : '';
+
+      return interaction.reply({
+        content: `⚠️ Strike **${newStrikes}/3** added to **${name}** ${strikeBar}\n> **Reason:** ${reason}${warn}`,
         ephemeral: true,
       });
     }
