@@ -64,4 +64,15 @@ async function getAll() {
   return (data ?? []).map(row => ({ guild_id: row.guild_id, ...rowToCamel(row) }));
 }
 
-module.exports = { get, set, getAll };
+/**
+ * Deletes all config for a guild (removes them from the Auto-Wave system).
+ */
+async function remove(guildId) {
+  await supabase
+    .from('guild_config')
+    .delete()
+    .eq('guild_id', guildId);
+}
+
+module.exports = { get, set, getAll, remove };
+

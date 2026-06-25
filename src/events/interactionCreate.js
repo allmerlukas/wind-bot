@@ -200,15 +200,26 @@ module.exports = {
         return interaction.update({ embeds: [await buildSummary(interaction.guildId)], components: [] });
       }
 
-      // ── Config wizard: paid ads — Yes saves immediately, No shows guilt-trip ──
+      // ── Config wizard: paid ads — Yes (first screen) ───────────────────────
       if (interaction.isButton() && interaction.customId.startsWith('cfg_paid_ads_yes:')) {
         const stepIndex = parseInt(interaction.customId.split(':')[1], 10);
         await setupStore.set(interaction.guildId, 'allowPaidAds', true);
-        const nextStep = stepIndex + 1;
-        if (nextStep >= STEPS.length) {
-          return interaction.update({ embeds: [await buildSummary(interaction.guildId)], components: [] });
-        }
-        return interaction.update(await buildStepMessage(interaction.guildId, nextStep));
+        return interaction.update({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(0x57F287)
+              .setTitle('🙏 thx so much!')
+              .setDescription('thx so much\nyou will get a **custom role** in our discord\n*(we will implement this later)*'),
+          ],
+          components: [
+            new ActionRowBuilder().addComponents(
+              new ButtonBuilder()
+                .setCustomId(`cfg_paid_ads_thanks_continue:${stepIndex}`)
+                .setLabel('Continue Setup ➡️')
+                .setStyle(ButtonStyle.Primary),
+            ),
+          ],
+        });
       }
 
       if (interaction.isButton() && interaction.customId.startsWith('cfg_paid_ads_no:')) {
@@ -248,11 +259,22 @@ module.exports = {
         if (allow) {
           // They gave in — save true and move on
           await setupStore.set(interaction.guildId, 'allowPaidAds', true);
-          const nextStep = stepIndex + 1;
-          if (nextStep >= STEPS.length) {
-            return interaction.update({ embeds: [await buildSummary(interaction.guildId)], components: [] });
-          }
-          return interaction.update(await buildStepMessage(interaction.guildId, nextStep));
+          return interaction.update({
+            embeds: [
+              new EmbedBuilder()
+                .setColor(0x57F287)
+                .setTitle('🙏 thx so much!')
+                .setDescription('thx so much\nyou will get a **custom role** in our discord\n*(we will implement this later)*'),
+            ],
+            components: [
+              new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                  .setCustomId(`cfg_paid_ads_thanks_continue:${stepIndex}`)
+                  .setLabel('Continue Setup ➡️')
+                  .setStyle(ButtonStyle.Primary),
+              ),
+            ],
+          });
         }
 
         // They said "No, I'm heartless" — hit them with one more plea
@@ -284,15 +306,75 @@ module.exports = {
       }
 
       // ── Config wizard: paid ads — final answer ───────────────────────────────
-      if (interaction.isButton() && (interaction.customId.startsWith('cfg_paid_ads_final_yes:') || interaction.customId.startsWith('cfg_paid_ads_final_no:'))) {
+      if (interaction.isButton() && interaction.customId.startsWith('cfg_paid_ads_final_yes:')) {
         const stepIndex = parseInt(interaction.customId.split(':')[1], 10);
-        const allow     = interaction.customId.startsWith('cfg_paid_ads_final_yes:');
-        await setupStore.set(interaction.guildId, 'allowPaidAds', allow);
+        await setupStore.set(interaction.guildId, 'allowPaidAds', true);
+        return interaction.update({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(0x57F287)
+              .setTitle('🙏 thx so much!')
+              .setDescription('thx so much\nyou will get a **custom role** in our discord\n*(we will implement this later)*'),
+          ],
+          components: [
+            new ActionRowBuilder().addComponents(
+              new ButtonBuilder()
+                .setCustomId(`cfg_paid_ads_thanks_continue:${stepIndex}`)
+                .setLabel('Continue Setup ➡️')
+                .setStyle(ButtonStyle.Primary),
+            ),
+          ],
+        });
+      }
+
+      if (interaction.isButton() && interaction.customId.startsWith('cfg_paid_ads_final_no:')) {
+        const stepIndex = parseInt(interaction.customId.split(':')[1], 10);
+        await setupStore.set(interaction.guildId, 'allowPaidAds', false);
         const nextStep = stepIndex + 1;
         if (nextStep >= STEPS.length) {
           return interaction.update({ embeds: [await buildSummary(interaction.guildId)], components: [] });
         }
         return interaction.update(await buildStepMessage(interaction.guildId, nextStep));
+      }
+
+      // ── Config wizard: paid ads — thank-you continue button ────────────────────
+      if (interaction.isButton() && interaction.customId.startsWith('cfg_paid_ads_thanks_continue:')) {
+        const stepIndex = parseInt(interaction.customId.split(':')[1], 10);
+        const nextStep = stepIndex + 1;
+        if (nextStep >= STEPS.length) {
+          return interaction.update({ embeds: [await buildSummary(interaction.guildId)], components: [] });
+        }
+        return interaction.update(await buildStepMessage(interaction.guildId, nextStep));
+      }
+
+      // ── Config remove: confirm/cancel ───────────────────────────────────────────
+      if (interaction.isButton() && interaction.customId === 'cfg_remove_confirm') {
+        await setupStore.remove(interaction.guildId);
+        return interaction.update({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(0xED4245)
+              .setTitle('🗑️ Removed from Auto-Wave')
+              .setDescription(
+                `**${interaction.guild.name}** has been removed from the Auto-Wave network.\n` +
+                `All config has been wiped. Run \`/config setup\` to re-enroll anytime.`
+              )
+              .setTimestamp(),
+          ],
+          components: [],
+        });
+      }
+
+      if (interaction.isButton() && interaction.customId === 'cfg_remove_cancel') {
+        return interaction.update({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(0x57F287)
+              .setTitle('✅ Cancelled')
+              .setDescription('No changes were made. Your Auto-Wave config is intact.'),
+          ],
+          components: [],
+        });
       }
 
       // ── Select menu: wave paste picker ───────────────────────────────────────

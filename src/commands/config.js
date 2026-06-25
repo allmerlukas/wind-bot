@@ -280,6 +280,10 @@ module.exports = {
     .addSubcommand(sub =>
       sub.setName('view')
         .setDescription('View the current Auto-Wave config for this server')
+    )
+    .addSubcommand(sub =>
+      sub.setName('remove')
+        .setDescription('Remove this server from the Auto-Wave system and wipe its config')
     ),
 
   async execute(interaction) {
@@ -321,6 +325,36 @@ module.exports = {
     if (sub === 'setup') {
       return interaction.reply({
         ...await buildStepMessage(interaction.guildId, 0),
+        ephemeral: true,
+      });
+    }
+
+    // ── /config remove ────────────────────────────────────────────────────────
+    if (sub === 'remove') {
+      return interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xED4245)
+            .setTitle('⚠️ Remove from Auto-Wave?')
+            .setDescription(
+              `This will **delete all Auto-Wave config** for **${interaction.guild.name}** and remove it from the network.\n\n` +
+              `You can re-enroll anytime with \`/config setup\`.`
+            )
+            .setTimestamp(),
+        ],
+        components: [
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId('cfg_remove_confirm')
+              .setLabel('Yes, remove us')
+              .setStyle(ButtonStyle.Danger)
+              .setEmoji('🗑️'),
+            new ButtonBuilder()
+              .setCustomId('cfg_remove_cancel')
+              .setLabel('Cancel')
+              .setStyle(ButtonStyle.Secondary),
+          ),
+        ],
         ephemeral: true,
       });
     }
