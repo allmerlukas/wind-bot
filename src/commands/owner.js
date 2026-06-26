@@ -140,12 +140,7 @@ module.exports = {
     // check
     .addSubcommand(sub =>
       sub.setName('check')
-        .setDescription('Check strikes and blacklist status for a server')
-        .addStringOption(opt =>
-          opt.setName('guild_id')
-            .setDescription('The server ID to check')
-            .setRequired(true)
-        )
+        .setDescription('Check strikes and blacklist status for all servers')
     )
 
     // error
@@ -433,33 +428,76 @@ module.exports = {
     // ── /owner check ───────────────────────────────────────────────────────────────
     if (sub === 'check') {
       await interaction.deferReply({ ephemeral: true });
-      const guildId    = interaction.options.getString('guild_id');
-      const guild      = client.guilds.cache.get(guildId);
-      const cfg        = await setupStore.get(guildId);
-      const blacklisted = (await getAllBlacklisted()).includes(guildId);
-      const strikes    = cfg.strikes ?? 0;
-      const name       = guild?.name ?? `Unknown (\`${guildId}\`)`;
+      const allCfgs = await setupStore.getAll();
+      const blacklisted = await getAllBlacklisted();
+      const blacklistedIds = blacklisted.map(b => b.guild_id);
 
-      const strikeBar  = ['□','□','□'].map((_, i) => i < strikes ? '🟥' : '□').join(' ');
-      const statusLine = blacklisted
-        ? '🚫 **BLACKLISTED** — excluded from Auto-Wave'
-        : strikes === 0
-          ? '✅ Clean — no strikes'
-          : `⚠️ **${strikes}/3 strikes** ${strikeBar}`;
+      const guildsData = [...client.guilds.cache.values()].map(g => {
+        const cfg = allCfgs.find(c => c.guild_id === g.id) || {};
+        const isBlacklisted = blacklistedIds.includes(g.id);
+        const strikes = cfg.strikes ?? 0;
+        const paidAds = cfg.allowPaidAds ? '✅' : '❌';
+        
+        let status = '✅ Clean';
+        if (isBlacklisted) status = '🚫 Blacklisted';
+        else if (strikes > 0) status = `⚠️ ${strikes}/3 Strikes`;
+        
+        return `**${g.name}** (\`${g.id}\`)\n` +
+               `> Status: ${status} | Paid Ads: ${paidAds} | Members: ${g.memberCount}`;
+      });
 
-      const embed = new EmbedBuilder()
-        .setColor(blacklisted ? 0xED4245 : strikes > 0 ? 0xFEE75C : 0x57F287)
-        .setTitle(`🔍 ${name}`)
-        .addFields(
-          { name: 'Server ID',   value: `\`${guildId}\``,            inline: true },
-          { name: 'Members',     value: `${guild?.memberCount ?? 'N/A'}`, inline: true },
-          { name: 'Status',      value: statusLine,                    inline: false },
-          { name: 'Ping',        value: cfg.pingEnabled !== false ? '🔔 Enabled' : '🔕 Disabled', inline: true },
-          { name: 'Delay',       value: cfg.partnerDelayHours ? `${cfg.partnerDelayHours}h` : 'Not set', inline: true },
-        )
-        .setTimestamp();
+      if (guildsData.length === 0) {
+        return interaction.editReply({ content: 'No guilds found.' });
+      }
 
-      return interaction.editReply({ embeds: [embed] });
+      const itemsPerPage = 10;
+      const totalPages = Math.ceil(guildsData.length / itemsPerPage);
+      let currentPage = 0;
+
+      const generateEmbed = (page) => {
+        const start = page * itemsPerPage;
+        const currentItems = guildsData.slice(start, start + itemsPerPage);
+        return new EmbedBuilder()
+          .setColor(0x5865F2)
+          .setTitle(`🔍 All Guilds Check (${guildsData.length} total)`)
+          .setDescription(currentItems.join('\n\n'))
+          .setFooter({ text: `Page ${page + 1} of ${totalPages}` })
+          .setTimestamp();
+      };
+
+      const generateButtons = (page) => {
+        return new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('prev_check')
+            .setLabel('◀️ Prev')
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(page === 0),
+          new ButtonBuilder()
+            .setCustomId('next_check')
+            .setLabel('Next ▶️')
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(page === totalPages - 1)
+        );
+      };
+
+      const msg = await interaction.editReply({
+        embeds: [generateEmbed(currentPage)],
+        components: totalPages > 1 ? [generateButtons(currentPage)] : []
+      });
+
+      if (totalPages > 1) {
+        const collector = msg.createMessageComponentCollector({ time: 600000 }); // 10 minutes
+        collector.on('collect', async i => {
+          if (i.customId === 'prev_check') currentPage--;
+          else if (i.customId === 'next_check') currentPage++;
+
+          await i.update({
+            embeds: [generateEmbed(currentPage)],
+            components: [generateButtons(currentPage)]
+          });
+        });
+      }
+      return;
     }
 
     // ── /owner error ──────────────────────────────────────────────────────────

@@ -32,7 +32,7 @@ module.exports = {
 
         const nextStep = stepIndex + 1;
         if (nextStep >= STEPS.length) {
-          return interaction.update({ embeds: [await buildSummary(interaction.guildId)], components: [] });
+          return interaction.update({ embeds: [await buildSummary(interaction.guildId, interaction)], components: [] });
         }
         return interaction.update(await buildStepMessage(interaction.guildId, nextStep));
       }
@@ -65,7 +65,7 @@ module.exports = {
 
         const nextStep = stepIndex + 1;
         if (nextStep >= STEPS.length) {
-          return interaction.update({ embeds: [await buildSummary(interaction.guildId)], components: [] });
+          return interaction.update({ embeds: [await buildSummary(interaction.guildId, interaction)], components: [] });
         }
         return interaction.update(await buildStepMessage(interaction.guildId, nextStep));
       }
@@ -99,9 +99,9 @@ module.exports = {
         const nextStep = stepIndex + 1;
         if (nextStep >= STEPS.length) {
           if (interaction.deferred) {
-            return interaction.editReply({ embeds: [await buildSummary(interaction.guildId)], components: [] });
+            return interaction.editReply({ embeds: [await buildSummary(interaction.guildId, interaction)], components: [] });
           }
-          return interaction.update({ embeds: [await buildSummary(interaction.guildId)], components: [] });
+          return interaction.update({ embeds: [await buildSummary(interaction.guildId, interaction)], components: [] });
         }
         
         if (interaction.deferred) {
@@ -136,9 +136,9 @@ module.exports = {
         const nextStep = stepIndex + 1;
         if (nextStep >= STEPS.length) {
           if (interaction.deferred) {
-            return interaction.editReply({ embeds: [await buildSummary(interaction.guildId)], components: [] });
+            return interaction.editReply({ embeds: [await buildSummary(interaction.guildId, interaction)], components: [] });
           }
-          return interaction.update({ embeds: [await buildSummary(interaction.guildId)], components: [] });
+          return interaction.update({ embeds: [await buildSummary(interaction.guildId, interaction)], components: [] });
         }
         const nextMsg = await buildStepMessage(interaction.guildId, nextStep);
         if (interaction.deferred) return interaction.editReply(nextMsg);
@@ -190,14 +190,14 @@ module.exports = {
         const stepIndex = parseInt(interaction.customId.split(':')[1], 10);
         const nextStep  = stepIndex + 1;
         if (nextStep >= STEPS.length) {
-          return interaction.update({ embeds: [await buildSummary(interaction.guildId)], components: [] });
+          return interaction.update({ embeds: [await buildSummary(interaction.guildId, interaction)], components: [] });
         }
         return interaction.update(await buildStepMessage(interaction.guildId, nextStep));
       }
 
       // ── Config wizard: finish early ───────────────────────────────────────────
       if (interaction.isButton() && interaction.customId === 'cfg_done') {
-        return interaction.update({ embeds: [await buildSummary(interaction.guildId)], components: [] });
+        return interaction.update({ embeds: [await buildSummary(interaction.guildId, interaction)], components: [] });
       }
 
       // ── Config wizard: paid ads — Yes (first screen) ───────────────────────
@@ -332,7 +332,7 @@ module.exports = {
         await setupStore.set(interaction.guildId, 'allowPaidAds', false);
         const nextStep = stepIndex + 1;
         if (nextStep >= STEPS.length) {
-          return interaction.update({ embeds: [await buildSummary(interaction.guildId)], components: [] });
+          return interaction.update({ embeds: [await buildSummary(interaction.guildId, interaction)], components: [] });
         }
         return interaction.update(await buildStepMessage(interaction.guildId, nextStep));
       }
@@ -342,7 +342,7 @@ module.exports = {
         const stepIndex = parseInt(interaction.customId.split(':')[1], 10);
         const nextStep = stepIndex + 1;
         if (nextStep >= STEPS.length) {
-          return interaction.update({ embeds: [await buildSummary(interaction.guildId)], components: [] });
+          return interaction.update({ embeds: [await buildSummary(interaction.guildId, interaction)], components: [] });
         }
         return interaction.update(await buildStepMessage(interaction.guildId, nextStep));
       }

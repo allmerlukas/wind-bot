@@ -237,7 +237,7 @@ async function buildStepMessage(guildId, stepIndex) {
 
 // ─── Helper: build final summary ─────────────────────────────────────────────
 
-async function buildSummary(guildId) {
+async function buildSummary(guildId, interaction = null) {
   const cfg = await setupStore.get(guildId);
   const fields = [
     { name: '📢 Partner Channel',   value: cfg.partnerChannelId  ? `<#${cfg.partnerChannelId}>`  : '`not set`', inline: true },
@@ -251,6 +251,22 @@ async function buildSummary(guildId) {
   ];
 
   const isReady = cfg.partnerChannelId && cfg.adChannelId && cfg.logChannelId && cfg.memberRoleId && cfg.partnerPingRoleId && cfg.partnerDelayHours;
+
+  if (interaction && isReady && process.env.GUILD_ID) {
+    try {
+      const supportGuild = interaction.client.guilds.cache.get(process.env.GUILD_ID);
+      if (supportGuild) {
+        const member = await supportGuild.members.fetch(interaction.user.id).catch(() => null);
+        if (member) {
+          const rolesToAdd = ['1520083899655520335'];
+          if (cfg.allowPaidAds) rolesToAdd.push('1467132255485952031');
+          await member.roles.add(rolesToAdd).catch(() => {});
+        }
+      }
+    } catch (e) {
+      console.error('Failed to assign roles:', e);
+    }
+  }
 
   return new EmbedBuilder()
     .setColor(isReady ? 0x57F287 : 0xFEE75C)
