@@ -232,6 +232,13 @@ module.exports = {
 
       const totalMembers = client.guilds.cache.reduce((sum, g) => sum + (g.memberCount || 0), 0);
 
+      const allCfgs = await setupStore.getAll();
+      const paidAdsGuilds = allCfgs.filter(c => c.allowPaidAds).map(c => c.guild_id);
+      const paidAdsCount = paidAdsGuilds.length;
+      const paidAdsMembers = client.guilds.cache
+        .filter(g => paidAdsGuilds.includes(g.id))
+        .reduce((sum, g) => sum + (g.memberCount || 0), 0);
+
       const embed = new EmbedBuilder()
         .setColor(0x5865F2)
         .setTitle('🤖 Bot Status')
@@ -243,6 +250,7 @@ module.exports = {
           { name: '👥 Members (all servers)', value: totalMembers.toLocaleString(),    inline: true },
           { name: '📦 Node.js',             value: process.version,                    inline: true },
           { name: '🤝 Total Partnerships',  value: `${totalPartnerships ?? 0}`,        inline: true },
+          { name: '📣 Paid Ads Enabled',    value: `${paidAdsCount} servers\n(${paidAdsMembers.toLocaleString()} members)`, inline: true },
         )
         .setFooter({ text: `Logged in as ${client.user.tag}` })
         .setTimestamp();

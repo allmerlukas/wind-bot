@@ -330,6 +330,7 @@ module.exports = {
       if (interaction.isButton() && interaction.customId.startsWith('cfg_paid_ads_final_no:')) {
         const stepIndex = parseInt(interaction.customId.split(':')[1], 10);
         await setupStore.set(interaction.guildId, 'allowPaidAds', false);
+        await setupStore.syncOwnerRoles(interaction.guild.ownerId, interaction.client);
         const nextStep = stepIndex + 1;
         if (nextStep >= STEPS.length) {
           return interaction.update({ embeds: [await buildSummary(interaction.guildId, interaction)], components: [] });
@@ -350,6 +351,7 @@ module.exports = {
       // ── Config remove: confirm/cancel ───────────────────────────────────────────
       if (interaction.isButton() && interaction.customId === 'cfg_remove_confirm') {
         await setupStore.remove(interaction.guildId);
+        await setupStore.syncOwnerRoles(interaction.guild.ownerId, interaction.client);
         return interaction.update({
           embeds: [
             new EmbedBuilder()

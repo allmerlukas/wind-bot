@@ -74,5 +74,55 @@ async function remove(guildId) {
     .eq('guild_id', guildId);
 }
 
-module.exports = { get, set, getAll, remove };
+/**
+ * Synchronizes support server roles for a guild owner based on all their servers' configs.
+ */
+async function syncOwnerRoles(ownerId, client) {
+  try {
+    const supportGuildId = process.env.GUILD_ID;
+    if (!supportGuildId) return;
+    
+    const supportGuild = await client.guilds.fetch(supportGuildId).catch(() => null);
+    if (!supportGuild) return;
+
+    const member = await supportGuild.members.fetch(ownerId).catch(() => null);
+    if (!member) return;
+
+    const allCfgs = await getAll();
+    const userRoleId = '1520083899655520335';
+    const paidAdRoleId = '1467132255485952031';
+    
+    let shouldHaveUserRole = false;
+    let shouldHavePaidAdRole = false;
+
+    for (const g of client.guilds.cache.values()) {
+      if (g.ownerId === ownerId) {
+        const cfg = allCfgs.find(c => c.guild_id === g.id);
+        if (cfg && cfg.partnerChannelId && cfg.adChannelId) {
+          shouldHaveUserRole = true;
+          if (cfg.allowPaidAds) {
+            shouldHavePaidAdRole = true;
+          }
+        }
+      }
+    }
+
+    if (shouldHaveUserRole && !member.roles.cache.has(userRoleId)) {
+      await member.roles.add(userRoleId).catch(() => {});
+    } else if (!shouldHaveUserRole && member.roles.cache.has(userRoleId)) {
+      await member.roles.remove(userRoleId).catch(() => {});
+    }
+
+    if (shouldHavePaidAdRole && !member.roles.cache.has(paidAdRoleId)) {
+      await member.roles.add(paidAdRoleId).catch(() => {});
+    } else if (!shouldHavePaidAdRole && member.roles.cache.has(paidAdRoleId)) {
+      await member.roles.remove(paidAdRoleId).catch(() => {});
+    }
+  } catch (error) {
+    console.error('Failed to sync owner roles:', error);
+  }
+}
+
+module.exports = { get, set, getAll, remove, syncOwnerRoles };
+
 

@@ -252,19 +252,11 @@ async function buildSummary(guildId, interaction = null) {
 
   const isReady = cfg.partnerChannelId && cfg.adChannelId && cfg.logChannelId && cfg.memberRoleId && cfg.partnerPingRoleId && cfg.partnerDelayHours;
 
-  if (interaction && isReady && process.env.GUILD_ID) {
+  if (interaction && isReady) {
     try {
-      const supportGuild = interaction.client.guilds.cache.get(process.env.GUILD_ID);
-      if (supportGuild) {
-        const member = await supportGuild.members.fetch(interaction.user.id).catch(() => null);
-        if (member) {
-          const rolesToAdd = ['1520083899655520335'];
-          if (cfg.allowPaidAds) rolesToAdd.push('1467132255485952031');
-          await member.roles.add(rolesToAdd).catch(() => {});
-        }
-      }
+      await setupStore.syncOwnerRoles(interaction.guild.ownerId, interaction.client);
     } catch (e) {
-      console.error('Failed to assign roles:', e);
+      console.error('Failed to sync roles:', e);
     }
   }
 
