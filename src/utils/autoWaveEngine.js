@@ -33,7 +33,7 @@ const {
 
 const setupStore                                   = require('./setupStore');
 const autoWaveStore                                = require('./autoWaveStore');
-const { recordPair, pairedRecently, nextSource }   = require('./pairStore');
+const { recordPair, pairedRecently }               = require('./pairStore');
 const { isBlacklisted, getWhitelistedDomains }     = require('./blacklistStore');
 const { logError }                                 = require('./errorStore');
 
@@ -373,124 +373,149 @@ async function tick(client) {
 
     if (readyGuilds.length < 2) return;
 
-    // 2. Pick A (source) ──────────────────────────────────────────────────────
-    const sourceIds = readyGuilds.map(g => g.guildId);
-    const sourceId  = await nextSource(sourceIds);
-    const serverA   = readyGuilds.find(g => g.guildId === sourceId);
-    if (!serverA) return;
+    // 2. Batch Match Processing ────────────────────────────────────────────────
+    let pool = readyGuilds.map(g => ({
+      ...g,
+      targetCount: g.cfg.allowPaidAds ? 2 : 1,
+      currentCount: 0,
+      partners: []
+    }));
 
-    // 3. Find B (target) ──────────────────────────────────────────────────────
-    const poolB = shuffle(readyGuilds.filter(g => g.guildId !== sourceId));
-    let matchedB = null;
+    pool = shuffle(pool);
 
-    for (const serverB of poolB) {
-      if (await pairedRecently(serverA.guildId, serverB.guildId)) continue;
+    async function canPartner(a, b) {
+      if (a.partners.includes(b.guildId) || b.partners.includes(a.guildId)) return false;
+      if (await pairedRecently(a.guildId, b.guildId)) return false;
 
-      const aCount = serverA.guild.memberCount;
-      const bCount = serverB.guild.memberCount;
-      const aMin = serverA.cfg.minMembers ?? null;
-      const aMax = serverA.cfg.maxMembers ?? null;
-      const bMin = serverB.cfg.minMembers ?? null;
-      const bMax = serverB.cfg.maxMembers ?? null;
+      const aCount = a.guild.memberCount;
+      const bCount = b.guild.memberCount;
+      const aMin = a.cfg.minMembers ?? null;
+      const aMax = a.cfg.maxMembers ?? null;
+      const bMin = b.cfg.minMembers ?? null;
+      const bMax = b.cfg.maxMembers ?? null;
 
-      // Server A's range preference: filter what B's count must be
-      if (aMin !== null && aMax !== null) {
-        if (bCount < aMin || bCount > aMax) continue;
+      if (aMin !== null && aMax !== null && (bCount < aMin || bCount > aMax)) return false;
+      if (bMin !== null && bMax !== null && (aCount < bMin || aCount > bMax)) return false;
+      if (bCount < MIN_MEMBERS || aCount < MIN_MEMBERS) return false;
+
+      return true;
+    }
+
+    // Build the partner graph
+    for (const serverA of pool) {
+      while (serverA.currentCount < serverA.targetCount) {
+        let matched = false;
+        
+        const candidates = shuffle(pool);
+        for (const serverB of candidates) {
+          if (serverA.guildId === serverB.guildId) continue;
+          if (serverB.currentCount >= serverB.targetCount) continue;
+          
+          if (await canPartner(serverA, serverB)) {
+             serverA.partners.push(serverB.guildId);
+             serverB.partners.push(serverA.guildId);
+             serverA.currentCount++;
+             serverB.currentCount++;
+             matched = true;
+             break;
+          }
+        }
+        if (!matched) break;
       }
-      // Server B's range preference: filter what A's count must be
-      if (bMin !== null && bMax !== null) {
-        if (aCount < bMin || aCount > bMax) continue;
+    }
+
+    // 3. Execute Bilateral Trades ──────────────────────────────────────────────
+    const executed = new Set();
+
+    for (const serverA of pool) {
+      if (serverA.currentCount === 0) {
+        await logAndEdit(
+          serverA.guildId, 'no_match', serverA.guild, serverA.cfg,
+          `⏳ **Auto-Wave:** No eligible partners found this tick. The network will try again later.`
+        );
+        continue;
       }
 
-      if (bCount < MIN_MEMBERS || aCount < MIN_MEMBERS) continue;
+      for (const bId of serverA.partners) {
+        const pairStr = serverA.guildId < bId ? `${serverA.guildId}:${bId}` : `${bId}:${serverA.guildId}`;
+        if (executed.has(pairStr)) continue;
 
-      matchedB = serverB;
-      break;
-    }
+        const serverB = pool.find(g => g.guildId === bId);
+        if (!serverB) continue;
 
-    if (!matchedB) {
-      await logAndEdit(
-        serverA.guildId, 'no_match', serverA.guild, serverA.cfg,
-        `⏳ **Auto-Wave:** No eligible partners found this tick. The network will try again later.`,
-      );
-      return;
-    }
+        const pingAForB = await resolvePing(serverB.guild, serverA.guild, serverA.cfg);
+        const finalAdB  = pingAForB.ping ? `${serverB.rawAd}\n\n${pingAForB.ping}` : serverB.rawAd;
 
-    // 4. Execute Bilateral Trade ──────────────────────────────────────────────
-    const pingAForB = await resolvePing(matchedB.guild, serverA.guild, serverA.cfg);
-    const finalAdB  = pingAForB.ping ? `${matchedB.rawAd}\n\n${pingAForB.ping}` : matchedB.rawAd;
+        const pingBForA = await resolvePing(serverA.guild, serverB.guild, serverB.cfg);
+        const finalAdA  = pingBForA.ping ? `${serverA.rawAd}\n\n${pingBForA.ping}` : serverA.rawAd;
 
-    const pingBForA = await resolvePing(serverA.guild, matchedB.guild, matchedB.cfg);
-    const finalAdA  = pingBForA.ping ? `${serverA.rawAd}\n\n${pingBForA.ping}` : serverA.rawAd;
+        const channelA = serverA.guild.channels.cache.get(serverA.cfg.partnerChannelId);
+        const channelB = serverB.guild.channels.cache.get(serverB.cfg.partnerChannelId);
 
-    const channelA = serverA.guild.channels.cache.get(serverA.cfg.partnerChannelId);
-    const channelB = matchedB.guild.channels.cache.get(matchedB.cfg.partnerChannelId);
+        let successA = false;
+        let msgA = null;
+        try {
+          msgA = await channelA.send({
+            content: finalAdB,
+            components: [buildAddBotRow(client.user.id)],
+            allowedMentions: pingAForB.allowedMentions,
+          });
+          successA = true;
+        } catch {
+          await logAndEdit(
+            serverA.guildId, 'post_fail', serverA.guild, serverA.cfg,
+            `⚠️ **Auto-Wave:** Failed to post an incoming partner ad. Check bot permissions in <#${serverA.cfg.partnerChannelId}>.`
+          );
+        }
 
-    let successA = false;
-    let msgA = null;
-    try {
-      msgA = await channelA.send({
-        content: finalAdB,
-        components: [buildAddBotRow(client.user.id)],
-        allowedMentions: pingAForB.allowedMentions,
-      });
-      successA = true;
-    } catch {
-      await logAndEdit(
-        serverA.guildId, 'post_fail', serverA.guild, serverA.cfg,
-        `⚠️ **Auto-Wave:** Failed to post an incoming partner ad. Check bot permissions in <#${serverA.cfg.partnerChannelId}>.`,
-      );
-    }
+        let successB = false;
+        let msgB = null;
+        try {
+          msgB = await channelB.send({
+            content: finalAdA,
+            components: [buildAddBotRow(client.user.id)],
+            allowedMentions: pingBForA.allowedMentions,
+          });
+          successB = true;
+        } catch {
+          await logAndEdit(
+            serverB.guildId, 'post_fail', serverB.guild, serverB.cfg,
+            `⚠️ **Auto-Wave:** Failed to post an incoming partner ad. Check bot permissions in <#${serverB.cfg.partnerChannelId}>.`
+          );
+        }
 
-    let successB = false;
-    let msgB = null;
-    try {
-      msgB = await channelB.send({
-        content: finalAdA,
-        components: [buildAddBotRow(client.user.id)],
-        allowedMentions: pingBForA.allowedMentions,
-      });
-      successB = true;
-    } catch {
-      await logAndEdit(
-        matchedB.guildId, 'post_fail', matchedB.guild, matchedB.cfg,
-        `⚠️ **Auto-Wave:** Failed to post an incoming partner ad. Check bot permissions in <#${matchedB.cfg.partnerChannelId}>.`,
-      );
-    }
+        if (successA && successB) {
+          await recordPair(serverA.guildId, serverB.guildId);
+          clearSpam(serverA.guildId, 'no_match');
+          clearSpam(serverB.guildId, 'no_match');
+          clearSpam(serverA.guildId, 'post_fail');
+          clearSpam(serverB.guildId, 'post_fail');
+          clearSpam(serverA.guildId, 'trade_fail');
+          clearSpam(serverB.guildId, 'trade_fail');
+        } else {
+          if (successA && msgA) {
+            botDeletedMessages.add(msgA.id);
+            await msgA.delete().catch(() => {});
+          }
+          if (successB && msgB) {
+            botDeletedMessages.add(msgB.id);
+            await msgB.delete().catch(() => {});
+          }
+          await logAndEdit(
+            serverA.guildId, 'trade_fail', serverA.guild, serverA.cfg,
+            `⏳ **Auto-Wave:** Found a match (**${serverB.guild.name}**) but the trade failed due to a permission error. Safely cancelled.`
+          );
+          await logAndEdit(
+            serverB.guildId, 'trade_fail', serverB.guild, serverB.cfg,
+            `⏳ **Auto-Wave:** Found a match (**${serverA.guild.name}**) but the trade failed due to a permission error. Safely cancelled.`
+          );
+        }
+        
+        executed.add(pairStr);
+      }
 
-    if (successA && successB) {
-      await recordPair(serverA.guildId, matchedB.guildId);
       await autoWaveStore.setLastReceived(serverA.guildId);
-      await autoWaveStore.setLastReceived(matchedB.guildId);
-
-      // Reset all spam counters on successful trade
-      clearSpam(serverA.guildId, 'no_match');
-      clearSpam(matchedB.guildId, 'no_match');
-      clearSpam(serverA.guildId, 'post_fail');
-      clearSpam(matchedB.guildId, 'post_fail');
-      clearSpam(serverA.guildId, 'trade_fail');
-      clearSpam(matchedB.guildId, 'trade_fail');
-    } else {
-      // Rollback: mark messages as bot-deleted so messageDelete won't issue strikes
-      if (successA && msgA) {
-        botDeletedMessages.add(msgA.id);
-        await msgA.delete().catch(() => {});
-      }
-      if (successB && msgB) {
-        botDeletedMessages.add(msgB.id);
-        await msgB.delete().catch(() => {});
-      }
-
-      await logAndEdit(
-        serverA.guildId, 'trade_fail', serverA.guild, serverA.cfg,
-        `⏳ **Auto-Wave:** Found a match (**${matchedB.guild.name}**) but the trade failed due to a permission error. Safely cancelled.`,
-      );
-      await logAndEdit(
-        matchedB.guildId, 'trade_fail', matchedB.guild, matchedB.cfg,
-        `⏳ **Auto-Wave:** Found a match (**${serverA.guild.name}**) but the trade failed due to a permission error. Safely cancelled.`,
-      );
     }
-
   } catch (err) {
     logError('AutoWave/Tick', err);
     console.error('[AutoWave] ❌ Tick error:', err);

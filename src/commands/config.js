@@ -139,7 +139,7 @@ const STEPS = [
   {
     id:          'cfg_paid_ads',
     label:       '📣 Paid Advertisements',
-    description: 'Allow Wind Bot to post **paid advertisements** from the network in your partner channel?\n\nThese are manually approved ads from paying customers — separate from regular Auto-Wave partners.\nYou can change this anytime by running `/config setup` again.',
+    description: 'Allow Wind Bot to post **paid advertisements** from the network in your partner channel?\n\nThese are manually approved ads from paying customers. If you allow paid ads, **you will get 2 partners per tick**!\n\nYou can change this anytime by running `/config setup` again.',
     type:        'boolean',
     storeKey:    'allowPaidAds',
   },

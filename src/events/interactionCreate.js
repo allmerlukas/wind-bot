@@ -209,7 +209,7 @@ module.exports = {
             new EmbedBuilder()
               .setColor(0x57F287)
               .setTitle('🙏 thx so much!')
-              .setDescription('thx so much\nyou will get a **custom role** in our discord'),
+              .setDescription('thx so much\nalright you will get **2 partners per tick** now and a **custom role** in our discord'),
           ],
           components: [
             new ActionRowBuilder().addComponents(
@@ -232,7 +232,7 @@ module.exports = {
               .setDescription(
                 `I host this bot for **$5 a month** out of my own pocket.\n` +
                 `The bot is **completely free** for you to use.\n\n` +
-                `Allowing paid ads costs you nothing, it just means the occasional sponsored post shows up in your partner channel, exactly like a regular partner ad.\n\n` +
+                `Allowing paid ads costs you nothing, and **you get 2 partners per tick** if you allow paid ads!\n\n` +
                 `Help a brother out 😭🙏`
               ),
           ],
@@ -264,7 +264,7 @@ module.exports = {
               new EmbedBuilder()
                 .setColor(0x57F287)
                 .setTitle('🙏 thx so much!')
-                .setDescription('thx so much\nyou will get a **custom role** in our discord'),
+                .setDescription('thx so much\nalright you will get **2 partners per tick** now and a **custom role** in our discord'),
             ],
             components: [
               new ActionRowBuilder().addComponents(
@@ -314,7 +314,7 @@ module.exports = {
             new EmbedBuilder()
               .setColor(0x57F287)
               .setTitle('🙏 thx so much!')
-              .setDescription('thx so much\nyou will get a **custom role** in our discord'),
+              .setDescription('thx so much\nalright you will get **2 partners per tick** now and a **custom role** in our discord'),
           ],
           components: [
             new ActionRowBuilder().addComponents(

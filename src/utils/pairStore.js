@@ -4,7 +4,7 @@
 
 const supabase = require('./supabase');
 
-const PAIR_COOLDOWN_MS = 72 * 60 * 60 * 1000; // 3 days
+const PAIR_COOLDOWN_MS = 48 * 60 * 60 * 1000; // 2 days
 
 function pairKey(idA, idB) {
   return idA < idB ? [idA, idB] : [idB, idA];
@@ -30,45 +30,4 @@ async function pairedRecently(idA, idB) {
   return Date.now() - data.paired_at < PAIR_COOLDOWN_MS;
 }
 
-// ─── Shuffled source queue ────────────────────────────────────────────────────
-
-function _shuffle(arr) {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
-async function _loadQueue() {
-  const { data } = await supabase
-    .from('wave_queue')
-    .select('queue')
-    .eq('id', 1)
-    .single();
-  if (!data) return [];
-  try { return JSON.parse(data.queue); } catch { return []; }
-}
-
-async function _saveQueue(q) {
-  await supabase.from('wave_queue').upsert(
-    { id: 1, queue: JSON.stringify(q) },
-    { onConflict: 'id' }
-  );
-}
-
-async function nextSource(activeIds) {
-  const activeSet = new Set(activeIds);
-  let queue = (await _loadQueue()).filter(id => activeSet.has(id));
-
-  if (queue.length === 0) {
-    queue = _shuffle(activeIds);
-  }
-
-  const source = queue.shift();
-  await _saveQueue(queue);
-  return source;
-}
-
-module.exports = { recordPair, pairedRecently, nextSource, PAIR_COOLDOWN_MS };
+module.exports = { recordPair, pairedRecently, PAIR_COOLDOWN_MS };
