@@ -582,7 +582,7 @@ module.exports = {
       await command.execute(interaction);
     } catch (error) {
       console.error(`❌ Error in /${interaction.commandName}:`, error);
-      const reply = { content: '❌ Something went wrong.', ephemeral: true };
+      const reply = { content: `❌ Something went wrong: \`${error.message}\``, ephemeral: true };
       if (interaction.replied || interaction.deferred) {
         await interaction.followUp(reply).catch(() => {});
       } else {
