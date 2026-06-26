@@ -37,7 +37,7 @@ module.exports = {
         const { adIndex } = deadLinks[queueIdx];
 
         // Update this ad
-        await waveStore.updateAd(message.author.id, waveKey, adIndex, content);
+        await waveStore.updateAd(message.author.id, waveKey, adIndex, stripMaskedLinks(content));
 
         const nextIdx = queueIdx + 1;
         if (nextIdx >= deadLinks.length) {

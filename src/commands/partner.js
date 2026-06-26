@@ -750,8 +750,11 @@ module.exports = {
             `\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\n` +
             `**Pair ${i + 1}: ${nameA} \u2194 ${nameB}**\n\n` +
             `**\ud83c\udfe0 Post in [${nameA}'s channel](${jumpA}):**\n` +
-            (adB ?? `\u26a0\ufe0f No ad found for ${nameB} \u2014 add to a wave folder`) +
-            `\n\n**\ud83c\udfe0 Post in [${nameB}'s channel](${jumpB}):**\n` +
+            (adB ?? `\u26a0\ufe0f No ad found for ${nameB} \u2014 add to a wave folder`)
+          );
+
+          await dmChannel.send(
+            `\n**\ud83c\udfe0 Post in [${nameB}'s channel](${jumpB}):**\n` +
             (adA ?? `\u26a0\ufe0f No ad found for ${nameA} \u2014 add to a wave folder`)
           );
         }

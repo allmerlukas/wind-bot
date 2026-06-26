@@ -394,8 +394,10 @@ async function tick(client) {
       const bMin = b.cfg.minMembers ?? null;
       const bMax = b.cfg.maxMembers ?? null;
 
-      if (aMin !== null && aMax !== null && (bCount < aMin || bCount > aMax)) return false;
-      if (bMin !== null && bMax !== null && (aCount < bMin || aCount > bMax)) return false;
+      if (aMin !== null && bCount < aMin) return false;
+      if (aMax !== null && bCount > aMax) return false;
+      if (bMin !== null && aCount < bMin) return false;
+      if (bMax !== null && aCount > bMax) return false;
       if (bCount < MIN_MEMBERS || aCount < MIN_MEMBERS) return false;
 
       return true;
@@ -426,6 +428,7 @@ async function tick(client) {
 
     // 3. Execute Bilateral Trades ──────────────────────────────────────────────
     const executed = new Set();
+    const successfulGuilds = new Set();
 
     for (const serverA of pool) {
       if (serverA.currentCount === 0) {
@@ -486,6 +489,8 @@ async function tick(client) {
 
         if (successA && successB) {
           await recordPair(serverA.guildId, serverB.guildId);
+          successfulGuilds.add(serverA.guildId);
+          successfulGuilds.add(serverB.guildId);
           clearSpam(serverA.guildId, 'no_match');
           clearSpam(serverB.guildId, 'no_match');
           clearSpam(serverA.guildId, 'post_fail');
@@ -513,9 +518,12 @@ async function tick(client) {
         
         executed.add(pairStr);
       }
-
-      await autoWaveStore.setLastReceived(serverA.guildId);
     }
+
+    for (const guildId of successfulGuilds) {
+      await autoWaveStore.setLastReceived(guildId);
+    }
+
   } catch (err) {
     logError('AutoWave/Tick', err);
     console.error('[AutoWave] ❌ Tick error:', err);

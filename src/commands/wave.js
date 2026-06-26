@@ -117,7 +117,9 @@ async function sendWaveMessages(interaction, wave, useChannel = false, waveKey =
       ? '⚠️ All ads in this wave belong to this server — nothing to send!'
       : '⚠️ This wave has no ads.';
     const reply = { content: msg, ephemeral: true };
-    return useChannel ? interaction.channel?.send(reply.content) : interaction.reply(reply);
+    if (useChannel && interaction.channel) return interaction.channel.send(reply.content);
+    if (interaction.deferred) return interaction.editReply(reply);
+    return interaction.reply(reply);
   }
 
   const sendOne = async (chunk, isFirst) => {
