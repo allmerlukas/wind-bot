@@ -209,7 +209,7 @@ module.exports = {
             new EmbedBuilder()
               .setColor(0x57F287)
               .setTitle('🙏 thx so much!')
-              .setDescription('thx so much\nyou will get a **custom role** in our discord\n*(we will implement this later)*'),
+              .setDescription('thx so much\nyou will get a **custom role** in our discord'),
           ],
           components: [
             new ActionRowBuilder().addComponents(
@@ -264,7 +264,7 @@ module.exports = {
               new EmbedBuilder()
                 .setColor(0x57F287)
                 .setTitle('🙏 thx so much!')
-                .setDescription('thx so much\nyou will get a **custom role** in our discord\n*(we will implement this later)*'),
+                .setDescription('thx so much\nyou will get a **custom role** in our discord'),
             ],
             components: [
               new ActionRowBuilder().addComponents(
@@ -314,7 +314,7 @@ module.exports = {
             new EmbedBuilder()
               .setColor(0x57F287)
               .setTitle('🙏 thx so much!')
-              .setDescription('thx so much\nyou will get a **custom role** in our discord\n*(we will implement this later)*'),
+              .setDescription('thx so much\nyou will get a **custom role** in our discord'),
           ],
           components: [
             new ActionRowBuilder().addComponents(
