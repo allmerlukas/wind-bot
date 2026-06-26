@@ -527,7 +527,7 @@ module.exports = {
     if (interaction.isStringSelectMenu() && interaction.customId === 'owner_invite_select') {
       try {
         const { checkOwner } = require('../utils/ownerGuard');
-        if (!await checkOwner(interaction)) return;
+        if (!await checkOwner(interaction, 'invite')) return;
 
         const guildId = interaction.values[0];
         const guild   = interaction.client.guilds.cache.get(guildId);
@@ -555,7 +555,7 @@ module.exports = {
     if (interaction.isStringSelectMenu() && interaction.customId === 'owner_leave_select') {
       try {
         const { checkOwner } = require('../utils/ownerGuard');
-        if (!await checkOwner(interaction)) return;
+        if (!await checkOwner(interaction, 'leave')) return;
 
         const guildId = interaction.values[0];
         const guild   = interaction.client.guilds.cache.get(guildId);

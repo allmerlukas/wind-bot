@@ -202,9 +202,9 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    if (!await checkOwner(interaction)) return;
-
     const sub    = interaction.options.getSubcommand();
+    if (!await checkOwner(interaction, sub)) return;
+
     const client = interaction.client;
 
     // ── /owner status ─────────────────────────────────────────────────────────
