@@ -480,12 +480,13 @@ module.exports = {
         );
       };
 
-      const msg = await interaction.editReply({
+      await interaction.editReply({
         embeds: [generateEmbed(currentPage)],
         components: totalPages > 1 ? [generateButtons(currentPage)] : []
       });
 
       if (totalPages > 1) {
+        const msg = await interaction.fetchReply();
         const collector = msg.createMessageComponentCollector({ time: 600000 }); // 10 minutes
         collector.on('collect', async i => {
           if (i.customId === 'prev_check') currentPage--;
