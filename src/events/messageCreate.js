@@ -151,6 +151,10 @@ module.exports = {
     // ── Partner link tracking (guild only) ────────────────────────────────────
     if (!message.guild) return;
 
+    const setupStore = require('../utils/setupStore');
+    const cfg = await setupStore.get(message.guild.id);
+    if (!cfg || cfg.partnerChannelId !== message.channel.id) return;
+
     const links = extractLinks(message.content);
     if (links.length === 0) return;
 
