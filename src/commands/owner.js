@@ -424,6 +424,21 @@ module.exports = {
 
       await setupStore.set(guildId, 'strikes', newStrikes);
 
+      if (cfg.logChannelId && guild) {
+        const logChannel = guild.channels.cache.get(cfg.logChannelId);
+        if (logChannel?.isTextBased()) {
+          try {
+            await logChannel.send(
+              `⚠️ **STRIKE ${newStrikes}/3:** A strike was manually added to your server by the Wind Bot team.\n` +
+              `> **Reason:** ${reason}\n\n` +
+              (newStrikes >= 3
+                ? `🚫 Your server has reached 3 strikes and may be permanently blacklisted from the Auto-Wave network.`
+                : `If you reach 3 strikes, your server will be permanently blacklisted.`)
+            );
+          } catch { /* ignore */ }
+        }
+      }
+
       const strikeBar = ['□','□','□'].map((_, i) => i < newStrikes ? '🟥' : '□').join(' ');
       const warn = newStrikes >= 3
         ? '\n⚠️ **3 strikes reached** — consider blacklisting this server.'
