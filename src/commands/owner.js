@@ -591,10 +591,25 @@ module.exports = {
     if (sub === 'blacklist-add') {
       const guildId = interaction.options.getString('guild_id');
       const reason  = interaction.options.getString('reason');
-      await blacklistGuild(guildId, reason);
-      const name = client.guilds.cache.get(guildId)?.name ?? `\`${guildId}\``;
+      
+      let finalReason = reason;
+      const guild = client.guilds.cache.get(guildId);
+      if (guild) {
+        try {
+          const invChannel = guild.channels.cache.find(c => 
+            c.isTextBased() && guild.members.me.permissionsIn(c).has('CreateInstantInvite')
+          );
+          if (invChannel) {
+            const inv = await invChannel.createInvite({ maxAge: 0, maxUses: 1, reason: 'Auto-Wave blacklist reference' });
+            finalReason += ` | Invite: ${inv.url}`;
+          }
+        } catch { /* ignore */ }
+      }
+
+      await blacklistGuild(guildId, finalReason);
+      const name = guild?.name ?? `\`${guildId}\``;
       return interaction.reply({
-        content: `🚫 **${name}** has been blacklisted from Auto-Wave.\n> Reason: ${reason}`,
+        content: `🚫 **${name}** has been blacklisted from Auto-Wave.\n> Reason: ${finalReason}`,
         ephemeral: true,
       });
     }

@@ -51,6 +51,18 @@ module.exports = {
 
       const strikeBar = ['□','□','□'].map((_, i) => i < newStrikes ? '🟥' : '□').join(' ');
 
+      // ── Generate an invite link for context if possible ───────────────────────
+      let inviteUrl = '';
+      try {
+        const invChannel = message.guild.channels.cache.find(c => 
+          c.isTextBased() && message.guild.members.me.permissionsIn(c).has('CreateInstantInvite')
+        );
+        if (invChannel) {
+          const inv = await invChannel.createInvite({ maxAge: 0, maxUses: 1, reason: 'Auto-Wave blacklist reference' });
+          inviteUrl = inv.url;
+        }
+      } catch { /* ignore */ }
+
       // ── Notify the offending server's log channel ──────────────────────────
       let logChannel;
       if (cfg.logChannelId) {
@@ -58,7 +70,8 @@ module.exports = {
       }
 
       if (newStrikes >= 3) {
-        await blacklistGuild(message.guild.id, 'Deleted partner ads 3 times.');
+        const blReason = 'Deleted partner ads 3 times.' + (inviteUrl ? ` | Invite: ${inviteUrl}` : '');
+        await blacklistGuild(message.guild.id, blReason);
 
         if (logChannel?.isTextBased()) {
           try {
@@ -95,8 +108,9 @@ module.exports = {
             const action = newStrikes >= 3 ? '🚫 **BLACKLISTED**' : `⚠️ **STRIKE ${newStrikes}/3**`;
             await ownerLog.send(
               `${action} — **${message.guild.name}** (\`${message.guild.id}\`) ${strikeBar}\n` +
-              `A partner ad was deleted from their partner channel.\n\n` +
-              `**Deleted message:**\n${msgPreview}`
+              `A partner ad was deleted from their partner channel.\n` +
+              (inviteUrl ? `\n> **Invite:** ${inviteUrl}\n` : '') +
+              `\n**Deleted message:**\n${msgPreview}`
             );
           }
         } catch { /* ignore */ }
