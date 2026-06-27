@@ -105,6 +105,11 @@ module.exports = {
     .addSubcommand(sub =>
       sub.setName('invite')
         .setDescription('Get an invite link from one of the servers the bot is in')
+        .addStringOption(opt =>
+          opt.setName('guild_id')
+            .setDescription('Optional: The specific server ID to invite from')
+            .setRequired(false)
+        )
     )
 
     // leave
@@ -362,6 +367,33 @@ module.exports = {
 
     // ── /owner invite ─────────────────────────────────────────────────────────
     if (sub === 'invite') {
+      const guildId = interaction.options.getString('guild_id');
+
+      if (guildId) {
+        await interaction.deferReply({ ephemeral: true });
+        const guild = client.guilds.cache.get(guildId);
+        if (!guild) {
+          return interaction.editReply({ content: `❌ The bot is not in a server with ID \`${guildId}\`.` });
+        }
+
+        const channel = guild.channels.cache.find(c => 
+          c.isTextBased() && guild.members.me.permissionsIn(c).has('CreateInstantInvite')
+        );
+
+        if (!channel) {
+          return interaction.editReply({ content: `❌ No channel found in **${guild.name}** where the bot can create an invite.` });
+        }
+
+        try {
+          const invite = await channel.createInvite({ maxAge: 0, maxUses: 1, reason: 'Owner requested via /owner invite' });
+          return interaction.editReply({
+            content: `🔗 **Invite for ${guild.name}:**\n${invite.url}\n\n*Single use, never expires.*`
+          });
+        } catch (err) {
+          return interaction.editReply({ content: `❌ Failed to create invite: ${err.message}` });
+        }
+      }
+
       if (client.guilds.cache.size === 0) {
         return interaction.reply({ content: '❌ The bot is not in any servers.', ephemeral: true });
       }
