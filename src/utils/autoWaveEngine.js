@@ -229,8 +229,16 @@ async function validateGuild(guildId, guild, cfg) {
   if (!cfg.memberRoleId)     return 'no_member_role';
   if (!cfg.partnerPingRoleId) return 'no_ping_role';
   if (!cfg.partnerDelayHours) return 'no_delay_hours';
-  if (!guild.channels.cache.get(cfg.partnerChannelId)?.isTextBased()) return 'partner_channel_inaccessible';
-  if (!guild.channels.cache.get(cfg.adChannelId)?.isTextBased())      return 'ad_channel_inaccessible';
+  
+  const pChannel = guild.channels.cache.get(cfg.partnerChannelId);
+  if (!pChannel?.isTextBased()) return 'partner_channel_inaccessible';
+  const me = guild.members.me;
+  if (me && !pChannel.permissionsFor(me).has(['SendMessages', 'ViewChannel'])) return 'partner_channel_inaccessible';
+
+  const adChannel = guild.channels.cache.get(cfg.adChannelId);
+  if (!adChannel?.isTextBased())      return 'ad_channel_inaccessible';
+  if (me && !adChannel.permissionsFor(me).has('ViewChannel')) return 'ad_channel_inaccessible';
+
   if (await isBlacklisted(guildId))  return 'blacklisted';
   return null;
 }
@@ -426,97 +434,86 @@ async function tick(client) {
       }
     }
 
-    // 3. Execute Bilateral Trades ──────────────────────────────────────────────
-    const executed = new Set();
+    // 3. Execute Broadcasts ──────────────────────────────────────────────────
     const successfulGuilds = new Set();
+    const recordedPairs = new Set();
 
-    for (const serverA of pool) {
-      if (serverA.currentCount === 0) {
+    for (const server of pool) {
+      if (server.currentCount === 0) {
         await logAndEdit(
-          serverA.guildId, 'no_match', serverA.guild, serverA.cfg,
+          server.guildId, 'no_match', server.guild, server.cfg,
           `⏳ **Auto-Wave:** No eligible partners found this tick. The network will try again later.`
         );
         continue;
       }
 
-      for (const bId of serverA.partners) {
-        const pairStr = serverA.guildId < bId ? `${serverA.guildId}:${bId}` : `${bId}:${serverA.guildId}`;
-        if (executed.has(pairStr)) continue;
+      const incomingAds = [];
+      const allPings = new Set();
+      const allRoles = new Set();
+      let parseEveryone = false;
 
-        const serverB = pool.find(g => g.guildId === bId);
-        if (!serverB) continue;
-
-        const pingAForB = await resolvePing(serverB.guild, serverA.guild, serverA.cfg);
-        const finalAdB  = pingAForB.ping ? `${serverB.rawAd}\n\n${pingAForB.ping}` : serverB.rawAd;
-
-        const pingBForA = await resolvePing(serverA.guild, serverB.guild, serverB.cfg);
-        const finalAdA  = pingBForA.ping ? `${serverA.rawAd}\n\n${pingBForA.ping}` : serverA.rawAd;
-
-        const channelA = serverA.guild.channels.cache.get(serverA.cfg.partnerChannelId);
-        const channelB = serverB.guild.channels.cache.get(serverB.cfg.partnerChannelId);
-
-        let successA = false;
-        let msgA = null;
-        try {
-          msgA = await channelA.send({
-            content: finalAdB,
-            components: [buildAddBotRow(client.user.id)],
-            allowedMentions: pingAForB.allowedMentions,
-          });
-          successA = true;
-        } catch {
-          await logAndEdit(
-            serverA.guildId, 'post_fail', serverA.guild, serverA.cfg,
-            `⚠️ **Auto-Wave:** Failed to post an incoming partner ad. Check bot permissions in <#${serverA.cfg.partnerChannelId}>.`
-          );
-        }
-
-        let successB = false;
-        let msgB = null;
-        try {
-          msgB = await channelB.send({
-            content: finalAdA,
-            components: [buildAddBotRow(client.user.id)],
-            allowedMentions: pingBForA.allowedMentions,
-          });
-          successB = true;
-        } catch {
-          await logAndEdit(
-            serverB.guildId, 'post_fail', serverB.guild, serverB.cfg,
-            `⚠️ **Auto-Wave:** Failed to post an incoming partner ad. Check bot permissions in <#${serverB.cfg.partnerChannelId}>.`
-          );
-        }
-
-        if (successA && successB) {
-          await recordPair(serverA.guildId, serverB.guildId);
-          successfulGuilds.add(serverA.guildId);
-          successfulGuilds.add(serverB.guildId);
-          clearSpam(serverA.guildId, 'no_match');
-          clearSpam(serverB.guildId, 'no_match');
-          clearSpam(serverA.guildId, 'post_fail');
-          clearSpam(serverB.guildId, 'post_fail');
-          clearSpam(serverA.guildId, 'trade_fail');
-          clearSpam(serverB.guildId, 'trade_fail');
-        } else {
-          if (successA && msgA) {
-            botDeletedMessages.add(msgA.id);
-            await msgA.delete().catch(() => {});
-          }
-          if (successB && msgB) {
-            botDeletedMessages.add(msgB.id);
-            await msgB.delete().catch(() => {});
-          }
-          await logAndEdit(
-            serverA.guildId, 'trade_fail', serverA.guild, serverA.cfg,
-            `⏳ **Auto-Wave:** Found a match (**${serverB.guild.name}**) but the trade failed due to a permission error. Safely cancelled.`
-          );
-          await logAndEdit(
-            serverB.guildId, 'trade_fail', serverB.guild, serverB.cfg,
-            `⏳ **Auto-Wave:** Found a match (**${serverA.guild.name}**) but the trade failed due to a permission error. Safely cancelled.`
-          );
-        }
+      for (const pId of server.partners) {
+        const partner = pool.find(g => g.guildId === pId);
+        if (!partner) continue;
+        incomingAds.push(partner.rawAd);
         
-        executed.add(pairStr);
+        const pingObj = await resolvePing(partner.guild, server.guild, server.cfg);
+        if (pingObj.ping) {
+          const parts = pingObj.ping.split(' ');
+          for (const part of parts) {
+            if (part) allPings.add(part);
+          }
+        }
+        if (pingObj.allowedMentions.parse?.includes('everyone')) parseEveryone = true;
+        if (pingObj.allowedMentions.roles) {
+          for (const r of pingObj.allowedMentions.roles) allRoles.add(r);
+        }
+      }
+
+      const finalPingStr = Array.from(allPings).join(' ');
+      const allowedMentions = {
+        parse: parseEveryone ? ['everyone'] : [],
+        roles: Array.from(allRoles)
+      };
+
+      const separator = '\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n';
+      const finalContent = incomingAds.join(separator) + (finalPingStr ? `\n\n${finalPingStr}` : '');
+
+      const channel = server.guild.channels.cache.get(server.cfg.partnerChannelId);
+      
+      let success = false;
+      try {
+        await channel.send({
+          content: finalContent,
+          components: [buildAddBotRow(client.user.id)],
+          allowedMentions
+        });
+        success = true;
+      } catch {
+        await logAndEdit(
+          server.guildId, 'post_fail', server.guild, server.cfg,
+          `⚠️ **Auto-Wave:** Failed to post incoming partner ads. Check bot permissions in <#${server.cfg.partnerChannelId}>.`
+        );
+      }
+
+      if (success) {
+        successfulGuilds.add(server.guildId);
+        clearSpam(server.guildId, 'no_match');
+        clearSpam(server.guildId, 'post_fail');
+        clearSpam(server.guildId, 'trade_fail');
+
+        for (const pId of server.partners) {
+          const pairStr = server.guildId < pId ? `${server.guildId}:${pId}` : `${pId}:${server.guildId}`;
+          if (!recordedPairs.has(pairStr)) {
+             await recordPair(server.guildId, pId);
+             recordedPairs.add(pairStr);
+          }
+        }
+      } else {
+        await logAndEdit(
+          server.guildId, 'trade_fail', server.guild, server.cfg,
+          `⏳ **Auto-Wave:** Found matches but the trade failed due to a permission error in this server.`
+        );
       }
     }
 
