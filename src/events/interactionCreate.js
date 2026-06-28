@@ -2,6 +2,8 @@ const waveStore = require('../utils/waveStore');
 const { sendWaveMessages, dmWaveToUser, executeCopy, copySessions, buildPageContent, buildNextRow } = require('../commands/wave');
 const { STEPS, buildStepMessage, buildSummary } = require('../commands/config');
 const { handleDashboardSelect, handleServerSelect, handleModalSubmit } = require('../commands/owner');
+const adminCmd = require('../commands/admin');
+const utilityCmd = require('../commands/utility');
 const setupStore = require('../utils/setupStore');
 const partnerCmd = require('../commands/partner');
 const helpCmd    = require('../commands/help');
@@ -81,6 +83,11 @@ module.exports = {
         return handleModalSubmit(interaction);
       }
 
+      // ── Admin dashboard: modal submit ─────────────────────────────────────────
+      if (interaction.isModalSubmit() && interaction.customId.startsWith('admin_modal:')) {
+        return adminCmd.handleModalSubmit(interaction);
+      }
+
       // ── Config wizard: channel select ─────────────────────────────────────────
       if (interaction.isChannelSelectMenu() && interaction.customId.startsWith('cfg_')) {
         const [stepId, stepIndexStr] = interaction.customId.split(':');
@@ -114,6 +121,11 @@ module.exports = {
           return interaction.editReply(await buildStepMessage(interaction.guildId, nextStep));
         }
         return interaction.update(await buildStepMessage(interaction.guildId, nextStep));
+      }
+
+      // ── Admin dashboard: channel select ───────────────────────────────────────
+      if (interaction.isChannelSelectMenu() && interaction.customId.startsWith('admin_channel_select:')) {
+        return adminCmd.handleChannelSelect(interaction);
       }
 
       // ── Config wizard: role select ────────────────────────────────────────────
@@ -395,6 +407,14 @@ module.exports = {
           return handleServerSelect(interaction);
         }
 
+        // ── Admin / Utility Dashboard ──────────────────────────────────────────
+        if (interaction.customId === 'admin_dashboard_select') {
+          return adminCmd.handleDashboardSelect(interaction);
+        }
+        if (interaction.customId === 'utility_dashboard_select') {
+          return utilityCmd.handleDashboardSelect(interaction);
+        }
+
         if (interaction.customId === 'wave_paste_select') {
           const waveKey = interaction.values[0];
           const wave = await waveStore.getWave(interaction.user.id, waveKey);
@@ -483,6 +503,13 @@ module.exports = {
           );
 
           return interaction.showModal(modal);
+        }
+      }
+
+      // ── User select menus ─────────────────────────────────────────────────────
+      if (interaction.isUserSelectMenu()) {
+        if (interaction.customId.startsWith('utility_user_select:')) {
+          return utilityCmd.handleUserSelect(interaction);
         }
       }
 
