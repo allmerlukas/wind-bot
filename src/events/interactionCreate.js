@@ -4,6 +4,7 @@ const { STEPS, buildStepMessage, buildSummary } = require('../commands/config');
 const { handleDashboardSelect, handleServerSelect, handleModalSubmit } = require('../commands/owner');
 const adminCmd = require('../commands/admin');
 const utilityCmd = require('../commands/utility');
+const staffCmd = require('../commands/staff');
 const setupStore = require('../utils/setupStore');
 const partnerCmd = require('../commands/partner');
 const helpCmd    = require('../commands/help');
@@ -86,6 +87,11 @@ module.exports = {
       // ── Admin dashboard: modal submit ─────────────────────────────────────────
       if (interaction.isModalSubmit() && interaction.customId.startsWith('admin_modal:')) {
         return adminCmd.handleModalSubmit(interaction);
+      }
+
+      // ── Staff dashboard: modal submit ─────────────────────────────────────────
+      if (interaction.isModalSubmit() && interaction.customId.startsWith('staff_modal:')) {
+        return staffCmd.handleModalSubmit(interaction);
       }
 
       // ── Config wizard: channel select ─────────────────────────────────────────
@@ -415,6 +421,14 @@ module.exports = {
           return utilityCmd.handleDashboardSelect(interaction);
         }
 
+        // ── Staff Dashboard ────────────────────────────────────────────────────
+        if (interaction.customId === 'staff_dashboard_select') {
+          return staffCmd.handleDashboardSelect(interaction);
+        }
+        if (interaction.customId.startsWith('staff_server_select:')) {
+          return staffCmd.handleServerSelect(interaction);
+        }
+
         if (interaction.customId === 'wave_paste_select') {
           const waveKey = interaction.values[0];
           const wave = await waveStore.getWave(interaction.user.id, waveKey);
@@ -515,6 +529,38 @@ module.exports = {
 
       // ── Button interactions ───────────────────────────────────────────────────
       if (interaction.isButton()) {
+
+        // ── Owner Strike Approval ───────────────────────────────────────────────
+        if (interaction.customId.startsWith('staff_strike_accept:') || interaction.customId.startsWith('staff_strike_deny:')) {
+          if (interaction.user.id !== process.env.OWNER_ID) {
+            return interaction.reply({ content: '🔒 Only the bot owner can approve or deny strike requests.', ephemeral: true });
+          }
+          
+          await interaction.deferUpdate();
+          const parts = interaction.customId.split(':');
+          const action = parts[0]; 
+          const guildId = parts[1];
+          const staffId = parts[2];
+          
+          if (action === 'staff_strike_accept') {
+            const { addStrike } = require('../utils/strikeLogic');
+            const { newStrikes, strikeBar, warn, name } = await addStrike(interaction.client, guildId, "Approved by Owner");
+            
+            const embed = EmbedBuilder.from(interaction.message.embeds[0])
+              .setColor('#00FF00')
+              .setTitle('✅ Strike Request Accepted')
+              .addFields({ name: 'Result', value: `Strike **${newStrikes}/3** added to **${name}** ${strikeBar}${warn}` });
+              
+            await interaction.message.edit({ embeds: [embed], components: [] });
+          } else {
+            const embed = EmbedBuilder.from(interaction.message.embeds[0])
+              .setColor('#FF0000')
+              .setTitle('❌ Strike Request Denied');
+              
+            await interaction.message.edit({ embeds: [embed], components: [] });
+          }
+          return;
+        }
 
         // ── Wave copy: page through ads one at a time ─────────────────────────
         if (interaction.customId.startsWith('wave_copy_next:')) {

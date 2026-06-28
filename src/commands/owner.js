@@ -10,6 +10,7 @@ const { getRecentErrors, getErrorCount } = require('../utils/errorStore');
 const { blacklistGuild, unblacklistGuild, getAllBlacklisted, getWhitelistedDomains } = require('../utils/blacklistStore');
 const { handleStop } = require('../utils/stopLogic');
 const { handleForcePartnerSubmit, handleForcePartnerAll } = require('../utils/forceLogic');
+const { addStrike } = require('../utils/strikeLogic');
 
 // ─── Constants & Menus ────────────────────────────────────────────────────────
 
@@ -359,20 +360,7 @@ async function handleModalSubmit(interaction) {
   if (action === 'strike-add') {
     await interaction.deferReply({ ephemeral: true });
     const reason = interaction.fields.getTextInputValue('reason');
-    const guild = interaction.client.guilds.cache.get(guildId);
-    const name = guild?.name ?? guildId;
-    const cfg = await setupStore.get(guildId);
-    const newStrikes = (cfg.strikes ?? 0) + 1;
-    await setupStore.set(guildId, 'strikes', newStrikes);
-
-    if (cfg.logChannelId && guild) {
-      const logChannel = guild.channels.cache.get(cfg.logChannelId);
-      if (logChannel?.isTextBased()) {
-        try { await logChannel.send(`⚠️ **STRIKE ${newStrikes}/3:** A strike was manually added to your server by the Wind Bot team.\n> **Reason:** ${reason}\n\n` + (newStrikes >= 3 ? `🚫 Your server has reached 3 strikes and may be permanently blacklisted.` : `If you reach 3 strikes, your server will be permanently blacklisted.`)); } catch {}
-      }
-    }
-    const strikeBar = ['□','□','□'].map((_, i) => i < newStrikes ? '🟥' : '□').join(' ');
-    const warn = newStrikes >= 3 ? '\n⚠️ **3 strikes reached** — consider blacklisting this server.' : '';
+    const { newStrikes, strikeBar, warn, name } = await addStrike(interaction.client, guildId, reason);
     return interaction.editReply(`⚠️ Strike **${newStrikes}/3** added to **${name}** ${strikeBar}\n> **Reason:** ${reason}${warn}`);
   }
 

@@ -20,6 +20,7 @@ const path = require('path');
 const OWNER_COMMANDS = [
   'owner.js',
   'vip.js',
+  'staff.js'
   // Add more owner commands here as you create them
 ];
 
