@@ -405,7 +405,7 @@ module.exports = {
     .addSubcommand(sub => sub.setName('dashboard').setDescription('Open the owner control panel')),
 
   async execute(interaction) {
-    if (!await checkOwner(interaction, 'dashboard')) return;
+    if (!await checkOwner(interaction)) return;
     const embed = new EmbedBuilder()
       .setColor(0xED4245)
       .setTitle('👑 Owner Dashboard')
