@@ -1,6 +1,7 @@
 const waveStore = require('../utils/waveStore');
 const { sendWaveMessages, dmWaveToUser, executeCopy, copySessions, buildPageContent, buildNextRow } = require('../commands/wave');
 const { STEPS, buildStepMessage, buildSummary } = require('../commands/config');
+const { handleDashboardSelect, handleServerSelect, handleModalSubmit } = require('../commands/owner');
 const setupStore = require('../utils/setupStore');
 const partnerCmd = require('../commands/partner');
 const helpCmd    = require('../commands/help');
@@ -73,6 +74,11 @@ module.exports = {
       // ── Partner edit: modal submit ────────────────────────────────────────────────
       if (interaction.isModalSubmit() && interaction.customId.startsWith('pm_edit_modal:')) {
         return partnerCmd.handleModal(interaction);
+      }
+
+      // ── Owner dashboard: modal submit ──────────────────────────────────────────
+      if (interaction.isModalSubmit() && interaction.customId.startsWith('owner_modal:')) {
+        return handleModalSubmit(interaction);
       }
 
       // ── Config wizard: channel select ─────────────────────────────────────────
@@ -381,6 +387,14 @@ module.exports = {
 
       // ── Select menu: wave paste picker ───────────────────────────────────────
       if (interaction.isStringSelectMenu()) {
+        // ── Owner / VIP Dashboard ──────────────────────────────────────────────
+        if (interaction.customId === 'owner_dashboard_select' || interaction.customId === 'vip_dashboard_select') {
+          return handleDashboardSelect(interaction);
+        }
+        if (interaction.customId.startsWith('owner_server_select:')) {
+          return handleServerSelect(interaction);
+        }
+
         if (interaction.customId === 'wave_paste_select') {
           const waveKey = interaction.values[0];
           const wave = await waveStore.getWave(interaction.user.id, waveKey);
@@ -520,57 +534,6 @@ module.exports = {
       // 10062 = Unknown interaction (expired or already handled)
       if (err.code !== 10062) {
         console.error(`❌ Component handling error [${interaction.customId}]:`, err);
-      }
-    }
-
-    // ── /owner invite — select menu response ─────────────────────────────────
-    if (interaction.isStringSelectMenu() && interaction.customId === 'owner_invite_select') {
-      try {
-        const { checkOwner } = require('../utils/ownerGuard');
-        if (!await checkOwner(interaction, 'invite')) return;
-
-        const guildId = interaction.values[0];
-        const guild   = interaction.client.guilds.cache.get(guildId);
-        if (!guild) return interaction.update({ content: '❌ Server not found.', components: [] });
-
-        // Find a text channel the bot can create invites in
-        const channel = guild.channels.cache.find(c =>
-          c.isTextBased() && guild.members.me.permissionsIn(c).has('CreateInstantInvite')
-        );
-        if (!channel) {
-          return interaction.update({ content: `❌ No channel found in **${guild.name}** where the bot can create an invite.`, components: [] });
-        }
-        const invite = await channel.createInvite({ maxAge: 0, maxUses: 1, reason: 'Owner requested via /owner invite' });
-        return interaction.update({
-          content: `🔗 **Invite for ${guild.name}:**\n${invite.url}\n\n*Single use, never expires.*`,
-          components: [],
-        });
-      } catch (err) {
-        console.error('[owner_invite_select]', err);
-        return interaction.update({ content: `❌ Failed to create invite: ${err.message}`, components: [] }).catch(() => {});
-      }
-    }
-
-    // ── /owner leave — select menu response ──────────────────────────────────
-    if (interaction.isStringSelectMenu() && interaction.customId === 'owner_leave_select') {
-      try {
-        const { checkOwner } = require('../utils/ownerGuard');
-        if (!await checkOwner(interaction, 'leave')) return;
-
-        const guildId = interaction.values[0];
-        const guild   = interaction.client.guilds.cache.get(guildId);
-        if (!guild) return interaction.update({ content: '❌ Server not found.', components: [] });
-
-        const name = guild.name;
-        try {
-          await guild.leave();
-          return interaction.update({ content: `👋 Successfully left **${name}**.`, components: [] });
-        } catch (err) {
-          return interaction.update({ content: `❌ Failed to leave **${name}**: ${err.message}`, components: [] });
-        }
-      } catch (err) {
-        console.error('[owner_leave_select]', err);
-        return interaction.update({ content: `❌ Error: ${err.message}`, components: [] }).catch(() => {});
       }
     }
 

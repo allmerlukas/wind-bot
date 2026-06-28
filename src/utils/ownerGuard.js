@@ -6,7 +6,7 @@
  */
 
 const VIP_ROLE_ID = '1520138560374833385';
-const VIP_ALLOWED_SUBS = ['status', 'autowave', 'error', 'invite', 'check'];
+const VIP_ALLOWED_SUBS = ['dashboard', 'status', 'autowave', 'error', 'invite', 'check'];
 
 /**
  * Returns true if the interaction is from the bot owner or a permitted VIP.
