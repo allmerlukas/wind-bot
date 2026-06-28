@@ -11,11 +11,11 @@ const { blacklistGuild, unblacklistGuild, getAllBlacklisted, getWhitelistedDomai
 const { handleStop } = require('../utils/stopLogic');
 const { handleForcePartnerSubmit, handleForcePartnerAll } = require('../utils/forceLogic');
 const { addStrike } = require('../utils/strikeLogic');
+const { buildStatusEmbed, buildBackButtonRow } = require('../utils/dashboardUtils');
 
 // ─── Constants & Menus ────────────────────────────────────────────────────────
 
 const DASHBOARD_OPTIONS = [
-  { label: 'Status', value: 'status', description: 'Bot stats: uptime, memory, guilds', emoji: '📊', vip: true },
   { label: 'Auto-Wave Check', value: 'autowave', description: 'Show Auto-Wave config status', emoji: '🌊', vip: true },
   { label: 'Check All Servers', value: 'check', description: 'Check strikes and blacklist status', emoji: '🔍', vip: true },
   { label: 'View Errors', value: 'error', description: 'View the most recent bot errors', emoji: '❌', vip: true },
@@ -74,55 +74,29 @@ function buildGuildMenu(client, customId) {
 
 // ─── Logic Handlers ───────────────────────────────────────────────────────────
 
-async function handleStatus(client, interaction) {
-  await client.application.fetch();
-  const uptimeMs  = client.uptime ?? 0;
-  const uptimeSec = Math.floor(uptimeMs / 1000);
-  const days      = Math.floor(uptimeSec / 86400);
-  const hours     = Math.floor((uptimeSec % 86400) / 3600);
-  const mins      = Math.floor((uptimeSec % 3600) / 60);
-  const secs      = uptimeSec % 60;
-  const uptimeStr = `${days}d ${hours}h ${mins}m ${secs}s`;
-
-  const memMB      = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(1);
-  const guildCount = client.guilds.cache.size;
-  const ping       = client.ws.ping;
-
-  const { count: totalPartnerships } = await supabase.from('wave_pairs').select('*', { count: 'exact', head: true });
-  const totalMembers = client.guilds.cache.reduce((sum, g) => sum + (g.memberCount || 0), 0);
-  const allCfgs = await setupStore.getAll();
-  const paidAdsGuilds = allCfgs.filter(c => c.allowPaidAds).map(c => c.guild_id);
-  const paidAdsMembers = client.guilds.cache.filter(g => paidAdsGuilds.includes(g.id)).reduce((sum, g) => sum + (g.memberCount || 0), 0);
-
-  const embed = new EmbedBuilder()
-    .setColor(0x5865F2)
-    .setTitle('🤖 Bot Status')
-    .addFields(
-      { name: '⏱️ Uptime', value: uptimeStr, inline: true },
-      { name: '🏓 Ping', value: `${ping}ms`, inline: true },
-      { name: '🧠 Memory', value: `${memMB} MB`, inline: true },
-      { name: '🌐 Guilds', value: `${guildCount}`, inline: true },
-      { name: '👥 Members (all servers)', value: totalMembers.toLocaleString(), inline: true },
-      { name: '📦 Node.js', value: process.version, inline: true },
-      { name: '🤝 Total Partnerships', value: `${totalPartnerships ?? 0}`, inline: true },
-      { name: '📣 Paid Ads Enabled', value: `${paidAdsGuilds.length} servers\n(${paidAdsMembers.toLocaleString()} members)`, inline: true },
-    )
-    .setTimestamp();
-
-  return interaction.editReply({ embeds: [embed], components: [] });
+async function editReplyWithBack(interaction, dashType, payload) {
+  let opts = typeof payload === 'string' ? { content: payload } : { ...payload };
+  if (!opts.components) opts.components = [];
+  opts.components.push(buildBackButtonRow(dashType));
+  if (interaction.deferred || interaction.replied) {
+    return interaction.editReply(opts);
+  }
+  return interaction.reply({ ...opts, ephemeral: true });
 }
 
-async function handleGuilds(client, interaction) {
+
+
+async function handleGuilds(client, interaction, dashType) {
   const guilds = [...client.guilds.cache.values()].sort((a, b) => b.memberCount - a.memberCount);
   const lines = guilds.map((g, i) => `\`${String(i + 1).padStart(2, '0')}.\` **${g.name}** — ${g.memberCount} members \`${g.id}\``);
   const page = lines.slice(0, 15).join('\n') || 'No guilds found.';
   const more = guilds.length > 15 ? `\n...and ${guilds.length - 15} more` : '';
 
   const embed = new EmbedBuilder().setColor(0x57F287).setTitle(`🌐 Guilds (${guilds.length})`).setDescription(page + more).setTimestamp();
-  return interaction.editReply({ embeds: [embed], components: [] });
+  return editReplyWithBack(interaction, dashType, { embeds: [embed], components: [] });
 }
 
-async function handleAutowave(client, interaction) {
+async function handleAutowave(client, interaction, dashType) {
   const guilds = [...client.guilds.cache.values()];
   const enrolled = [], missing = [];
   for (const guild of guilds) {
@@ -142,10 +116,10 @@ async function handleAutowave(client, interaction) {
   }
   const desc = [enrolled.length ? `**Enrolled (${enrolled.length})**\n${enrolled.join('\n')}` : null, missing.length ? `\n**Not Configured (${missing.length})**\n${missing.join('\n')}` : null].filter(Boolean).join('\n') || 'No guilds found.';
   const embed = new EmbedBuilder().setColor(0xFEE75C).setTitle('🌊 Auto-Wave Enrollment').setDescription(desc.slice(0, 4000)).setTimestamp();
-  return interaction.editReply({ embeds: [embed], components: [] });
+  return editReplyWithBack(interaction, dashType, { embeds: [embed], components: [] });
 }
 
-async function handleCheck(client, interaction) {
+async function handleCheck(client, interaction, dashType) {
   const allCfgs = await setupStore.getAll();
   const blacklisted = await getAllBlacklisted();
   const blacklistedIds = blacklisted.map(b => b.guild_id);
@@ -159,7 +133,7 @@ async function handleCheck(client, interaction) {
     return `**${g.name}** (\`${g.id}\`)\n> Status: ${status} | Paid Ads: ${cfg.allowPaidAds ? '✅' : '❌'} | Members: ${g.memberCount}`;
   });
 
-  if (guildsData.length === 0) return interaction.editReply({ content: 'No guilds found.', components: [] });
+  if (guildsData.length === 0) return editReplyWithBack(interaction, dashType, { content: 'No guilds found.', components: [] });
 
   const itemsPerPage = 10;
   const totalPages = Math.ceil(guildsData.length / itemsPerPage);
@@ -171,7 +145,7 @@ async function handleCheck(client, interaction) {
     new ButtonBuilder().setCustomId('next_check').setLabel('Next ▶️').setStyle(ButtonStyle.Primary).setDisabled(page === totalPages - 1)
   );
 
-  await interaction.editReply({ embeds: [generateEmbed(currentPage)], components: totalPages > 1 ? [generateButtons(currentPage)] : [] });
+  await editReplyWithBack(interaction, dashType, { embeds: [generateEmbed(currentPage)], components: totalPages > 1 ? [generateButtons(currentPage)] : [] });
 
   if (totalPages > 1) {
     const msg = await interaction.fetchReply();
@@ -179,22 +153,22 @@ async function handleCheck(client, interaction) {
     collector.on('collect', async i => {
       if (i.customId === 'prev_check') currentPage--;
       else if (i.customId === 'next_check') currentPage++;
-      await i.update({ embeds: [generateEmbed(currentPage)], components: [generateButtons(currentPage)] });
+      await i.update({ embeds: [generateEmbed(currentPage)], components: [generateButtons(currentPage), buildBackButtonRow(dashType)] });
     });
   }
 }
 
-async function handleError(client, interaction) {
+async function handleError(client, interaction, dashType) {
   const errors = await getRecentErrors(10);
   const total = await getErrorCount();
-  if (errors.length === 0) return interaction.editReply({ content: '✅ No errors logged — all good!', components: [] });
+  if (errors.length === 0) return editReplyWithBack(interaction, dashType, { content: '✅ No errors logged — all good!', components: [] });
 
   const lines = errors.map(e => `${`<t:${Math.floor(e.occurred_at / 1000)}:R>`} **\`${e.source}\`**${e.guild_id ? ` • guild \`${e.guild_id}\`` : ''}\n> ${e.message.slice(0, 200)}`);
   const embed = new EmbedBuilder().setColor(0xED4245).setTitle(`❌ Recent Errors (${errors.length} of ${total} stored)`).setDescription(lines.join('\n\n').slice(0, 4000)).setFooter({ text: `Showing last 10 • Max stored: 200` }).setTimestamp();
-  return interaction.editReply({ embeds: [embed], components: [] });
+  return editReplyWithBack(interaction, dashType, { embeds: [embed], components: [] });
 }
 
-async function handleBlacklistList(client, interaction) {
+async function handleBlacklistList(client, interaction, dashType) {
   const banned = await getAllBlacklisted();
   const domains = await getWhitelistedDomains();
   const bannedLines = banned.length ? banned.map(b => `🚫 **${client.guilds.cache.get(b.guild_id)?.name ?? b.guild_id}** \`${b.guild_id}\` — ${b.reason}`).join('\n') : '*None*';
@@ -204,18 +178,18 @@ async function handleBlacklistList(client, interaction) {
     { name: `Blacklisted Guilds (${banned.length})`, value: bannedLines.slice(0, 1000), inline: false },
     { name: `Whitelisted Link Domains (${domains.length})`, value: domainLines.slice(0, 1000), inline: false },
   ).setTimestamp();
-  return interaction.editReply({ embeds: [embed], components: [] });
+  return editReplyWithBack(interaction, dashType, { embeds: [embed], components: [] });
 }
 
-async function handlePingToggle(client, interaction) {
+async function handlePingToggle(client, interaction, dashType) {
   const current = (await setupStore.get('global')).pingEnabled ?? true;
   await setupStore.set('global', 'pingEnabled', !current);
-  return interaction.editReply({ content: !current ? `✅ **Pings enabled globally.**` : `🔕 **Pings disabled globally.**`, components: [] });
+  return editReplyWithBack(interaction, dashType, { content: !current ? `✅ **Pings enabled globally.**` : `🔕 **Pings disabled globally.**`, components: [] });
 }
 
 // ─── Interaction Routers ──────────────────────────────────────────────────────
 
-async function handleDashboardSelect(interaction) {
+async function handleDashboardSelect(interaction, dashType = 'owner') {
   const isVip = interaction.customId === 'vip_dashboard_select';
   const action = interaction.values[0];
 
@@ -228,18 +202,18 @@ async function handleDashboardSelect(interaction) {
   // No-input actions
   if (['status', 'autowave', 'check', 'error', 'blacklist-list', 'ping', 'stop', 'force-partnerall'].includes(action)) {
     await interaction.update({ content: `⏳ Loading ${action}...`, components: [] });
-    if (action === 'status') return handleStatus(interaction.client, interaction);
-    if (action === 'autowave') return handleAutowave(interaction.client, interaction);
-    if (action === 'check') return handleCheck(interaction.client, interaction);
-    if (action === 'error') return handleError(interaction.client, interaction);
-    if (action === 'blacklist-list') return handleBlacklistList(interaction.client, interaction);
-    if (action === 'ping') return handlePingToggle(interaction.client, interaction);
-    if (action === 'stop') return handleStop(interaction.client, interaction);
-    if (action === 'force-partnerall') return handleForcePartnerAll(interaction.client, interaction);
+    if (action === 'status') return handleStatus(interaction.client, interaction, dashType);
+    if (action === 'autowave') return handleAutowave(interaction.client, interaction, dashType);
+    if (action === 'check') return handleCheck(interaction.client, interaction, dashType);
+    if (action === 'error') return handleError(interaction.client, interaction, dashType);
+    if (action === 'blacklist-list') return handleBlacklistList(interaction.client, interaction, dashType);
+    if (action === 'ping') return handlePingToggle(interaction.client, interaction, dashType);
+    if (action === 'stop') return handleStop(interaction.client, interaction, dashType);
+    if (action === 'force-partnerall') return handleForcePartnerAll(interaction.client, interaction, dashType);
   }
   else if (action === 'guilds') {
     await interaction.update({ content: `⏳ Loading guilds...`, components: [] });
-    return handleGuilds(interaction.client, interaction);
+    return handleGuilds(interaction.client, interaction, dashType);
   }
 
   // Server selection actions
@@ -270,7 +244,7 @@ async function handleDashboardSelect(interaction) {
   }
 }
 
-async function handleServerSelect(interaction) {
+async function handleServerSelect(interaction, dashType = 'owner') {
   const [_, action] = interaction.customId.split(':');
   const guildId = interaction.values[0];
   const guild = interaction.client.guilds.cache.get(guildId);
@@ -281,38 +255,38 @@ async function handleServerSelect(interaction) {
 
   if (action === 'invite') {
     await interaction.update({ content: '⏳ Generating invite...', components: [] });
-    if (!guild) return interaction.editReply('❌ Server not found.');
+    if (!guild) return editReplyWithBack(interaction, dashType, '❌ Server not found.');
     const channel = guild.channels.cache.find(c => c.isTextBased() && guild.members.me.permissionsIn(c).has('CreateInstantInvite'));
-    if (!channel) return interaction.editReply(`❌ No channel found in **${name}** where the bot can create an invite.`);
+    if (!channel) return editReplyWithBack(interaction, dashType, `❌ No channel found in **${name}** where the bot can create an invite.`);
     try {
       const invite = await channel.createInvite({ maxAge: 0, maxUses: 1, reason: 'Owner requested' });
-      return interaction.editReply(`🔗 **Invite for ${name}:**\n${invite.url}\n\n*Single use, never expires.*`);
+      return editReplyWithBack(interaction, dashType, `🔗 **Invite for ${name}:**\n${invite.url}\n\n*Single use, never expires.*`);
     } catch (err) {
-      return interaction.editReply(`❌ Failed: ${err.message}`);
+      return editReplyWithBack(interaction, dashType, `❌ Failed: ${err.message}`);
     }
   }
 
   if (action === 'leave') {
     await interaction.update({ content: `⏳ Leaving ${name}...`, components: [] });
-    if (!guild) return interaction.editReply('❌ Server not found.');
+    if (!guild) return editReplyWithBack(interaction, dashType, '❌ Server not found.');
     try {
       await guild.leave();
-      return interaction.editReply(`👋 Successfully left **${name}**.`);
+      return editReplyWithBack(interaction, dashType, `👋 Successfully left **${name}**.`);
     } catch (err) {
-      return interaction.editReply(`❌ Failed: ${err.message}`);
+      return editReplyWithBack(interaction, dashType, `❌ Failed: ${err.message}`);
     }
   }
 
   if (action === 'strike-reset') {
     await interaction.update({ content: `⏳ Resetting strikes for ${name}...`, components: [] });
     await setupStore.set(guildId, 'strikes', 0);
-    return interaction.editReply(`✅ Strikes reset to **0** for **${name}**.`);
+    return editReplyWithBack(interaction, dashType, `✅ Strikes reset to **0** for **${name}**.`);
   }
 
   if (action === 'blacklist-remove') {
     await interaction.update({ content: `⏳ Unblacklisting ${name}...`, components: [] });
     await unblacklistGuild(guildId);
-    return interaction.editReply(`✅ **${name}** has been removed from the blacklist.`);
+    return editReplyWithBack(interaction, dashType, `✅ **${name}** has been removed from the blacklist.`);
   }
 
   // Requires a modal for reason
@@ -325,7 +299,7 @@ async function handleServerSelect(interaction) {
   }
 }
 
-async function handleModalSubmit(interaction) {
+async function handleModalSubmit(interaction, dashType = 'owner') {
   const parts = interaction.customId.split(':');
   const action = parts[1];
   const guildId = parts[2];
@@ -349,19 +323,19 @@ async function handleModalSubmit(interaction) {
         if (ch?.isTextBased()) { try { await ch.send(`📢 **[Wind Bot Broadcast]**\n${message}`); sent++; } catch { failed++; } } else failed++;
       }
     }
-    return interaction.editReply(`📢 **Broadcast complete**\n✅ Sent: **${sent}** | ❌ Failed: **${failed}**`);
+    return editReplyWithBack(interaction, dashType, `📢 **Broadcast complete**\n✅ Sent: **${sent}** | ❌ Failed: **${failed}**`);
   }
 
   if (action === 'force-partner') {
     await interaction.deferReply({ ephemeral: true });
-    return handleForcePartnerSubmit(interaction.client, interaction);
+    return handleForcePartnerSubmit(interaction.client, interaction, dashType);
   }
 
   if (action === 'strike-add') {
     await interaction.deferReply({ ephemeral: true });
     const reason = interaction.fields.getTextInputValue('reason');
     const { newStrikes, strikeBar, warn, name } = await addStrike(interaction.client, guildId, reason);
-    return interaction.editReply(`⚠️ Strike **${newStrikes}/3** added to **${name}** ${strikeBar}\n> **Reason:** ${reason}${warn}`);
+    return editReplyWithBack(interaction, dashType, `⚠️ Strike **${newStrikes}/3** added to **${name}** ${strikeBar}\n> **Reason:** ${reason}${warn}`);
   }
 
   if (action === 'blacklist-add') {
@@ -379,7 +353,7 @@ async function handleModalSubmit(interaction) {
       } catch {}
     }
     await blacklistGuild(guildId, finalReason);
-    return interaction.editReply(`🚫 **${guild?.name ?? guildId}** has been blacklisted.\n> Reason: ${finalReason}`);
+    return editReplyWithBack(interaction, dashType, `🚫 **${guild?.name ?? guildId}** has been blacklisted.\n> Reason: ${finalReason}`);
   }
 }
 
@@ -392,16 +366,22 @@ module.exports = {
     .setDefaultMemberPermissions(0n)
     .addSubcommand(sub => sub.setName('dashboard').setDescription('Open the owner control panel')),
 
+  
   async execute(interaction) {
-    if (!await checkOwner(interaction)) return;
-    const embed = new EmbedBuilder()
-      .setColor(0xED4245)
-      .setTitle('👑 Owner Dashboard')
-      .setDescription('Select an action from the dropdown menu below.')
-      .setTimestamp();
-
-    return interaction.reply({ embeds: [embed], components: [buildDashboardMenu(false)], ephemeral: true });
+    if (!await checkOwner(interaction, 'dashboard')) return;
+    return this.renderDashboard(interaction);
   },
+
+  async renderDashboard(interaction, isUpdate = false) {
+    const embed = await buildStatusEmbed(interaction.client, '👑 Owner Dashboard');
+    const components = [buildDashboardMenu(false)];
+    
+    if (isUpdate) {
+      return interaction.update({ embeds: [embed], components });
+    }
+    return interaction.reply({ embeds: [embed], components, ephemeral: true });
+  },
+
 
   handleDashboardSelect,
   handleServerSelect,

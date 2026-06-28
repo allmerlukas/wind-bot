@@ -135,11 +135,11 @@ async function handleModalSubmit(interaction) {
     
     const amount = parseInt(amountStr, 10);
     if (isNaN(amount) || amount < 1 || amount > 100) {
-      return interaction.editReply('❌ Amount must be a number between 1 and 100.');
+      return editReplyWithBack(interaction, 'admin', '❌ Amount must be a number between 1 and 100.');
     }
 
     let messages = await channel.messages.fetch({ limit: 100 }).catch(() => null);
-    if (!messages) return interaction.editReply('❌ Could not fetch messages.');
+    if (!messages) return editReplyWithBack(interaction, 'admin', '❌ Could not fetch messages.');
 
     if (userId) {
       messages = messages.filter(m => m.author.id === userId).first(amount);
@@ -160,7 +160,7 @@ async function handleModalSubmit(interaction) {
     await interaction.deferReply({ ephemeral: true });
     const channelId = parts[2];
     const channel = interaction.client.channels.cache.get(channelId);
-    if (!channel) return interaction.editReply('❌ Target channel not found.');
+    if (!channel) return editReplyWithBack(interaction, 'admin', '❌ Target channel not found.');
 
     const title = interaction.fields.getTextInputValue('title');
     const message = interaction.fields.getTextInputValue('message');
@@ -196,14 +196,24 @@ module.exports = {
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addSubcommand(sub => sub.setName('dashboard').setDescription('Open the admin dashboard')),
 
+  
   async execute(interaction) {
+    if (!interaction.memberPermissions.has(PermissionFlagsBits.Administrator)) {
+      return interaction.reply({ content: '🔒 You do not have permission to use this command.', ephemeral: true });
+    }
+    return this.renderDashboard(interaction);
+  },
+
+  async renderDashboard(interaction, isUpdate = false) {
     const embed = new EmbedBuilder()
-      .setColor('#ED4245')
-      .setTitle('🛡️ Admin Dashboard')
+      .setColor('#E74C3C')
+      .setTitle('🛠️ Admin Dashboard')
       .setDescription('Select an administrative action from the dropdown menu below.')
       .setTimestamp();
-
-    return interaction.reply({ embeds: [embed], components: [buildAdminDashboardMenu()], ephemeral: true });
+    const components = [buildAdminMenu()];
+    
+    if (isUpdate) return editReplyWithBack(interaction, 'admin', { embeds: [embed], components });
+    return interaction.reply({ embeds: [embed], components, ephemeral: true });
   },
 
   handleDashboardSelect,

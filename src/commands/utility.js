@@ -61,7 +61,7 @@ async function handleDashboardSelect(interaction) {
       .setFooter({ text: `Requested by ${interaction.user.tag}` })
       .setTimestamp();
 
-    return interaction.update({ embeds: [embed], components: [] });
+    return editReplyWithBack(interaction, 'utility', { embeds: [embed], components: [] });
   }
 
   if (action === 'credits') {
@@ -85,7 +85,7 @@ async function handleDashboardSelect(interaction) {
       )
       .setFooter({ text: 'Wind Bot • Thanks for using the bot!' })
       .setTimestamp();
-    return interaction.update({ embeds: [embed], components: [] });
+    return editReplyWithBack(interaction, 'utility', { embeds: [embed], components: [] });
   }
 
   if (action === 'userinfo' || action === 'avatar') {
@@ -103,7 +103,7 @@ async function handleUserSelect(interaction) {
   
   if (action === 'avatar') {
     const user = await interaction.client.users.fetch(userId).catch(() => null);
-    if (!user) return interaction.update({ content: '❌ User not found.', components: [] });
+    if (!user) return editReplyWithBack(interaction, 'utility', { content: '❌ User not found.', components: [] });
 
     const avatarUrl = user.displayAvatarURL({ size: 1024, extension: 'png' });
     const gifUrl = user.displayAvatarURL({ size: 1024, extension: 'gif' });
@@ -115,15 +115,15 @@ async function handleUserSelect(interaction) {
       .addFields({ name: '🔗 Links', value: `[PNG](${avatarUrl}) | [GIF](${gifUrl})`, inline: false })
       .setFooter({ text: `Requested by ${interaction.user.tag}` });
 
-    return interaction.update({ content: '', embeds: [embed], components: [] });
+    return editReplyWithBack(interaction, 'utility', { content: '', embeds: [embed], components: [] });
   }
 
   if (action === 'userinfo') {
     const guild = interaction.guild;
-    if (!guild) return interaction.update({ content: '❌ User info requires being in a server context.', components: [] });
+    if (!guild) return editReplyWithBack(interaction, 'utility', { content: '❌ User info requires being in a server context.', components: [] });
 
     const target = await guild.members.fetch(userId).catch(() => null);
-    if (!target) return interaction.update({ content: '❌ Member not found in this server.', components: [] });
+    if (!target) return editReplyWithBack(interaction, 'utility', { content: '❌ Member not found in this server.', components: [] });
     const user = target.user;
 
     const joinedServer = target.joinedTimestamp
@@ -152,7 +152,7 @@ async function handleUserSelect(interaction) {
       .setFooter({ text: `Requested by ${interaction.user.tag}` })
       .setTimestamp();
 
-    return interaction.update({ content: '', embeds: [embed], components: [] });
+    return editReplyWithBack(interaction, 'utility', { content: '', embeds: [embed], components: [] });
   }
 }
 
@@ -165,14 +165,21 @@ module.exports = {
     .setIntegrationTypes([ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall])
     .addSubcommand(sub => sub.setName('dashboard').setDescription('Open the utility dashboard')),
 
+  
   async execute(interaction) {
-    const embed = new EmbedBuilder()
-      .setColor('#5865F2')
-      .setTitle('🛠️ Utility Dashboard')
-      .setDescription('Select a utility action from the dropdown menu below.')
-      .setTimestamp();
+    return this.renderDashboard(interaction);
+  },
 
-    return interaction.reply({ embeds: [embed], components: [buildUtilityDashboardMenu()], ephemeral: true });
+  async renderDashboard(interaction, isUpdate = false) {
+    const embed = new EmbedBuilder()
+      .setColor('#3498DB')
+      .setTitle('🔧 Utility Dashboard')
+      .setDescription('Select a utility tool from the dropdown menu below.')
+      .setTimestamp();
+    const components = [buildUtilityMenu()];
+    
+    if (isUpdate) return editReplyWithBack(interaction, 'utility', { embeds: [embed], components });
+    return interaction.reply({ embeds: [embed], components, ephemeral: true });
   },
 
   handleDashboardSelect,

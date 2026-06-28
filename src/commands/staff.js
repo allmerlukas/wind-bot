@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { handleStatus, handleAutowave, handleCheck, handleError } = require('./owner');
 const setupStore = require('../utils/setupStore');
+const { buildBackButtonRow, buildStatusEmbed } = require('../utils/dashboardUtils');
 
 const STAFF_ROLE_ID = '1461421179347931340';
 
@@ -12,8 +13,7 @@ function buildStaffMenu() {
       .setCustomId('staff_dashboard_select')
       .setPlaceholder('Select an action...')
       .addOptions(
-        new StringSelectMenuOptionBuilder().setLabel('Status Overview').setValue('status').setDescription('View bot and Auto-Wave stats').setEmoji('📈'),
-        new StringSelectMenuOptionBuilder().setLabel('Auto-Wave Check').setValue('autowave').setDescription('Check your Auto-Wave channels').setEmoji('🌊'),
+                new StringSelectMenuOptionBuilder().setLabel('Auto-Wave Check').setValue('autowave').setDescription('Check your Auto-Wave channels').setEmoji('🌊'),
         new StringSelectMenuOptionBuilder().setLabel('Server Check').setValue('check').setDescription('Look up a server by ID').setEmoji('🔍'),
         new StringSelectMenuOptionBuilder().setLabel('View Errors').setValue('error').setDescription('See recent bot errors').setEmoji('⚠️'),
         new StringSelectMenuOptionBuilder().setLabel('Generate Invite').setValue('invite').setDescription('Generate an invite link for a server').setEmoji('🔗'),
@@ -40,16 +40,27 @@ function buildGuildMenu(client, customId) {
 
 // ─── Handlers ─────────────────────────────────────────────────────────────────
 
+async function editReplyWithBack(interaction, dashType, payload) {
+  let opts = typeof payload === 'string' ? { content: payload } : { ...payload };
+  if (!opts.components) opts.components = [];
+  opts.components.push(buildBackButtonRow(dashType));
+  if (interaction.deferred || interaction.replied) {
+    return interaction.editReply(opts);
+  }
+  return interaction.update(opts); // use update if not deferred!
+}
+
+
 async function handleDashboardSelect(interaction) {
   const action = interaction.values[0];
 
   if (['status', 'autowave', 'check', 'error'].includes(action)) {
     await interaction.update({ content: `⏳ Loading ${action}...`, components: [] });
     // We can reuse the owner.js handlers because they just take interaction and client
-    if (action === 'status') return handleStatus(interaction.client, interaction);
-    if (action === 'autowave') return handleAutowave(interaction.client, interaction);
-    if (action === 'check') return handleCheck(interaction.client, interaction);
-    if (action === 'error') return handleError(interaction.client, interaction);
+    
+    if (action === 'autowave') return handleAutowave(interaction.client, interaction, 'staff');
+    if (action === 'check') return handleCheck(interaction.client, interaction, 'staff');
+    if (action === 'error') return handleError(interaction.client, interaction, 'staff');
   }
 
   if (action === 'invite' || action === 'strike-request') {
@@ -70,14 +81,14 @@ async function handleServerSelect(interaction) {
 
   if (action === 'invite') {
     await interaction.deferUpdate();
-    if (!guild) return interaction.editReply({ content: '❌ Server not found.', components: [] });
+    if (!guild) return editReplyWithBack(interaction, 'staff', { content: '❌ Server not found.', components: [] });
     let invite = null;
     const channel = guild.channels.cache.find(c => c.isTextBased() && c.permissionsFor(guild.members.me).has('CreateInstantInvite'));
     if (channel) {
       invite = await channel.createInvite({ maxAge: 86400, maxUses: 1 }).catch(() => null);
     }
-    if (!invite) return interaction.editReply({ content: `❌ Could not generate invite for **${name}**.`, components: [] });
-    return interaction.editReply({ content: `🔗 **Invite for ${name}:** ${invite.url}`, components: [] });
+    if (!invite) return editReplyWithBack(interaction, 'staff', { content: `❌ Could not generate invite for **${name}**.`, components: [] });
+    return editReplyWithBack(interaction, 'staff', { content: `🔗 **Invite for ${name}:** ${invite.url}`, components: [] });
   }
 
   if (action === 'strike-request') {
@@ -108,15 +119,15 @@ async function handleModalSubmit(interaction) {
     const targetName = targetGuild?.name ?? guildId;
 
     // Find Owner's server log channel
-    if (!process.env.GUILD_ID) return interaction.editReply('❌ Bot is missing GUILD_ID in .env');
+    if (!process.env.GUILD_ID) return editReplyWithBack(interaction, 'staff', '❌ Bot is missing GUILD_ID in .env');
     const ownerGuild = interaction.client.guilds.cache.get(process.env.GUILD_ID);
-    if (!ownerGuild) return interaction.editReply('❌ Bot is not in the Owner server.');
+    if (!ownerGuild) return editReplyWithBack(interaction, 'staff', '❌ Bot is not in the Owner server.');
     
     const cfg = await setupStore.get(process.env.GUILD_ID);
-    if (!cfg || !cfg.logChannelId) return interaction.editReply('❌ The owner server does not have a log channel configured.');
+    if (!cfg || !cfg.logChannelId) return editReplyWithBack(interaction, 'staff', '❌ The owner server does not have a log channel configured.');
 
     const logChannel = ownerGuild.channels.cache.get(cfg.logChannelId);
-    if (!logChannel || !logChannel.isTextBased()) return interaction.editReply('❌ The owner server log channel is invalid.');
+    if (!logChannel || !logChannel.isTextBased()) return editReplyWithBack(interaction, 'staff', '❌ The owner server log channel is invalid.');
 
     const embed = new EmbedBuilder()
       .setColor('#FFA500')
@@ -131,7 +142,7 @@ async function handleModalSubmit(interaction) {
 
     try {
       await logChannel.send({ content: `<@${process.env.OWNER_ID}>`, embeds: [embed], components: [buttons] });
-      return interaction.editReply('✅ Strike request sent to the owner for approval!');
+      return editReplyWithBack(interaction, 'staff', '✅ Strike request sent to the owner for approval!');
     } catch (err) {
       return interaction.editReply(`❌ Failed to send request to owner's log channel: ${err.message}`);
     }
@@ -146,18 +157,20 @@ module.exports = {
     .setDescription('Staff dashboard')
     .addSubcommand(sub => sub.setName('dashboard').setDescription('Open the staff dashboard')),
 
+  
   async execute(interaction) {
     if (!interaction.member?.roles?.cache?.has(STAFF_ROLE_ID)) {
       return interaction.reply({ content: '🔒 You do not have permission to use the staff dashboard.', ephemeral: true });
     }
+    return this.renderDashboard(interaction);
+  },
 
-    const embed = new EmbedBuilder()
-      .setColor(0x3498DB)
-      .setTitle('🛡️ Staff Dashboard')
-      .setDescription('Welcome! Select a staff action from the dropdown menu below.')
-      .setTimestamp();
-
-    return interaction.reply({ embeds: [embed], components: [buildStaffMenu()], ephemeral: true });
+  async renderDashboard(interaction, isUpdate = false) {
+    const embed = await buildStatusEmbed(interaction.client, '🛡️ Staff Dashboard');
+    const components = [buildStaffMenu()];
+    
+    if (isUpdate) return editReplyWithBack(interaction, 'staff', { embeds: [embed], components });
+    return interaction.reply({ embeds: [embed], components, ephemeral: true });
   },
 
   handleDashboardSelect,

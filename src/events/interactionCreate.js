@@ -530,6 +530,21 @@ module.exports = {
       // ── Button interactions ───────────────────────────────────────────────────
       if (interaction.isButton()) {
 
+        // ── Dashboard Return ────────────────────────────────────────────────────
+        if (interaction.customId.startsWith('dash_return:')) {
+          const dashType = interaction.customId.split(':')[1];
+          let cmd;
+          if (dashType === 'owner') cmd = require('../commands/owner');
+          else if (dashType === 'vip') cmd = require('../commands/vip');
+          else if (dashType === 'staff') cmd = require('../commands/staff');
+          else if (dashType === 'admin') cmd = require('../commands/admin');
+          else if (dashType === 'utility') cmd = require('../commands/utility');
+          
+          if (cmd && cmd.renderDashboard) {
+            return cmd.renderDashboard(interaction, true);
+          }
+        }
+
         // ── Owner Strike Approval ───────────────────────────────────────────────
         if (interaction.customId.startsWith('staff_strike_accept:') || interaction.customId.startsWith('staff_strike_deny:')) {
           if (interaction.user.id !== process.env.OWNER_ID) {
