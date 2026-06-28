@@ -8,6 +8,8 @@ const setupStore        = require('../utils/setupStore');
 const supabase          = require('../utils/supabase');
 const { getRecentErrors, getErrorCount } = require('../utils/errorStore');
 const { blacklistGuild, unblacklistGuild, getAllBlacklisted, getWhitelistedDomains } = require('../utils/blacklistStore');
+const { handleStop } = require('../utils/stopLogic');
+const { handleForcePartnerSubmit, handleForcePartnerAll } = require('../utils/forceLogic');
 
 // ─── Constants & Menus ────────────────────────────────────────────────────────
 
@@ -26,6 +28,9 @@ const DASHBOARD_OPTIONS = [
   { label: 'Unblacklist Server', value: 'blacklist-remove', description: 'Remove server from blacklist', emoji: '✅', vip: false },
   { label: 'Blacklist List', value: 'blacklist-list', description: 'Show all blacklisted servers', emoji: '📜', vip: false },
   { label: 'Leave Server', value: 'leave', description: 'Make the bot leave a server', emoji: '👋', vip: false },
+  { label: 'Stop Engine', value: 'stop', description: 'Toggle Auto-Wave engine on or off', emoji: '🛑', vip: false },
+  { label: 'Force Partner', value: 'force-partner', description: 'Force send an ad to a server', emoji: '📤', vip: false },
+  { label: 'Force Partner All', value: 'force-partnerall', description: 'Force pair all servers right now', emoji: '🌊', vip: false },
 ];
 
 function buildDashboardMenu(isVip) {
@@ -220,7 +225,7 @@ async function handleDashboardSelect(interaction) {
   }
 
   // No-input actions
-  if (['status', 'autowave', 'check', 'error', 'blacklist-list', 'ping'].includes(action)) {
+  if (['status', 'autowave', 'check', 'error', 'blacklist-list', 'ping', 'stop', 'force-partnerall'].includes(action)) {
     await interaction.update({ content: `⏳ Loading ${action}...`, components: [] });
     if (action === 'status') return handleStatus(interaction.client, interaction);
     if (action === 'autowave') return handleAutowave(interaction.client, interaction);
@@ -228,6 +233,8 @@ async function handleDashboardSelect(interaction) {
     if (action === 'error') return handleError(interaction.client, interaction);
     if (action === 'blacklist-list') return handleBlacklistList(interaction.client, interaction);
     if (action === 'ping') return handlePingToggle(interaction.client, interaction);
+    if (action === 'stop') return handleStop(interaction.client, interaction);
+    if (action === 'force-partnerall') return handleForcePartnerAll(interaction.client, interaction);
   }
   else if (action === 'guilds') {
     await interaction.update({ content: `⏳ Loading guilds...`, components: [] });
@@ -250,6 +257,14 @@ async function handleDashboardSelect(interaction) {
     const msgInput = new TextInputBuilder().setCustomId('message').setLabel('Message content').setStyle(TextInputStyle.Paragraph).setRequired(true);
     const destInput = new TextInputBuilder().setCustomId('destination').setLabel('Destination (log or partner)').setStyle(TextInputStyle.Short).setRequired(true).setValue('log');
     modal.addComponents(new ActionRowBuilder().addComponents(msgInput), new ActionRowBuilder().addComponents(destInput));
+    return interaction.showModal(modal);
+  }
+
+  if (action === 'force-partner') {
+    const modal = new ModalBuilder().setCustomId('owner_modal:force-partner').setTitle('Force Partner');
+    const sourceInput = new TextInputBuilder().setCustomId('source').setLabel('Source Guild ID').setStyle(TextInputStyle.Short).setRequired(true);
+    const destInput = new TextInputBuilder().setCustomId('destination').setLabel('Destination Guild ID').setStyle(TextInputStyle.Short).setRequired(true);
+    modal.addComponents(new ActionRowBuilder().addComponents(sourceInput), new ActionRowBuilder().addComponents(destInput));
     return interaction.showModal(modal);
   }
 }
@@ -334,6 +349,11 @@ async function handleModalSubmit(interaction) {
       }
     }
     return interaction.editReply(`📢 **Broadcast complete**\n✅ Sent: **${sent}** | ❌ Failed: **${failed}**`);
+  }
+
+  if (action === 'force-partner') {
+    await interaction.deferReply({ ephemeral: true });
+    return handleForcePartnerSubmit(interaction.client, interaction);
   }
 
   if (action === 'strike-add') {
