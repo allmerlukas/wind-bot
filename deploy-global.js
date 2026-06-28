@@ -20,7 +20,7 @@ const path = require('path');
 const GLOBAL_COMMANDS = [
   'wave.js', 'giveaway.js', 'partners.js', 'partner.js', 'purge.js',
   'userinfo.js', 'serverinfo.js', 'avatar.js', 'ping.js',
-  'announce.js', 'poll.js', 'help.js', 'stop.js',
+  'announce.js', 'poll.js', 'help.js',
   'config.js',   // Auto-Wave configuration
   'credits.js',  // Public credits command
 ];
