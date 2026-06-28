@@ -66,16 +66,24 @@ async function handleDashboardSelect(interaction) {
 
   if (action === 'credits') {
     const embed = new EmbedBuilder()
-      .setColor('#FEE75C')
-      .setTitle('❤️ Wind Bot Credits')
+      .setColor('#5865F2')
+      .setTitle('✨ Wind Bot — Credits')
       .setDescription(
-        'Wind Bot was built with passion to help Discord servers grow their communities automatically.\n\n' +
-        '**Lead Developer & Creator**\n' +
-        '`[Placeholder for Developer Name/Socials]`\n\n' +
-        '**Contributors & Special Thanks**\n' +
-        'Thank you to everyone who tested and provided feedback!'
+        [
+          '**Wind Bot** is a custom Discord bot built for partner management, server automation, and more.',
+          '',
+          '👤 **Developer**',
+          '> aruvine — Built and maintained Wind Bot',
+          '',
+          '💡 **Inspiration**',
+          '> **WaveBot** by **copa** — the original idea for the partner wave system',
+          "> [Join copa's server](https://discord.gg/mcfdJUjHJH) to check out WaveBot",
+          '',
+          '🔧 **Built with**',
+          '> [discord.js v14](https://discord.js.org) • [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) • Node.js',
+        ].join('\n')
       )
-      .setFooter({ text: 'Powered by Discord.js' })
+      .setFooter({ text: 'Wind Bot • Thanks for using the bot!' })
       .setTimestamp();
     return interaction.update({ embeds: [embed], components: [] });
   }
