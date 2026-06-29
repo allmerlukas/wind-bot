@@ -285,19 +285,14 @@ module.exports = {
     if (sub === 'reqs') {
       const n = interaction.guild?.memberCount ?? 0;
 
-      // Build tier breakpoints based on server size
-      let rows;
+      let rows = [];
       if (n >= 500) {
         const t1 = Math.ceil(n * 0.38);
-        const t2 = Math.ceil(n * 0.51);
-        const t3 = Math.ceil(n * 0.71);
-        const t4 = Math.ceil(n * 0.92);
+        const t2 = Math.ceil(n * 0.71);
         rows = [
           [`0 - ${t1 - 1}`,      'Nothing'],
           [`${t1} - ${t2 - 1}`,  'Partner Ping'],
-          [`${t2} - ${t3 - 1}`,  '@here'],
-          [`${t3} - ${t4 - 1}`,  'Partner Ping + @here'],
-          [`${t4}+`,             'Member Role'],
+          [`${t2}+`,             'Member Role'],
         ];
       } else if (n >= 200) {
         const t1 = Math.ceil(n * 0.20);

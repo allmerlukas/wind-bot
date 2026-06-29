@@ -19,6 +19,7 @@ const KEY_MAP = {
   strikes:           'strikes',
   pingEnabled:       'ping_enabled',
   allowPaidAds:      'allow_paid_ads',
+  adminId:           'admin_id',
 };
 
 const COL_MAP = Object.fromEntries(Object.entries(KEY_MAP).map(([k, v]) => [v, k]));
@@ -75,9 +76,10 @@ async function remove(guildId) {
 }
 
 /**
- * Synchronizes support server roles for a guild owner based on all their servers' configs.
+ * Synchronizes support server roles for a specific user (either owner or admin).
  */
-async function syncOwnerRoles(ownerId, client) {
+async function syncUserRoles(userId, client) {
+  if (!userId) return;
   try {
     const supportGuildId = process.env.GUILD_ID;
     if (!supportGuildId) return;
@@ -85,7 +87,7 @@ async function syncOwnerRoles(ownerId, client) {
     const supportGuild = await client.guilds.fetch(supportGuildId).catch(() => null);
     if (!supportGuild) return;
 
-    const member = await supportGuild.members.fetch(ownerId).catch(() => null);
+    const member = await supportGuild.members.fetch(userId).catch(() => null);
     if (!member) return;
 
     const allCfgs = await getAll();
@@ -95,15 +97,20 @@ async function syncOwnerRoles(ownerId, client) {
     let shouldHaveUserRole = false;
     let shouldHavePaidAdRole = false;
 
-    for (const g of client.guilds.cache.values()) {
-      if (g.ownerId === ownerId) {
-        const cfg = allCfgs.find(c => c.guild_id === g.id);
-        if (cfg && cfg.partnerChannelId && cfg.adChannelId) {
-          shouldHaveUserRole = true;
-          if (cfg.allowPaidAds) {
-            shouldHavePaidAdRole = true;
-          }
-        }
+    for (const cfg of allCfgs) {
+      if (!cfg.partnerChannelId || !cfg.adChannelId) continue; // Not fully enrolled
+      
+      let isOwnerOrAdmin = false;
+      if (cfg.adminId === userId) {
+        isOwnerOrAdmin = true;
+      } else {
+        const g = client.guilds.cache.get(cfg.guild_id);
+        if (g && g.ownerId === userId) isOwnerOrAdmin = true;
+      }
+
+      if (isOwnerOrAdmin) {
+        shouldHaveUserRole = true;
+        if (cfg.allowPaidAds) shouldHavePaidAdRole = true;
       }
     }
 
@@ -119,10 +126,34 @@ async function syncOwnerRoles(ownerId, client) {
       await member.roles.remove(paidAdRoleId).catch(() => {});
     }
   } catch (error) {
-    console.error('Failed to sync owner roles:', error);
+    console.error(`Failed to sync roles for ${userId}:`, error);
   }
 }
 
-module.exports = { get, set, getAll, remove, syncOwnerRoles };
+/**
+ * Runs on bot boot to ensure all owners and admins have their correct roles.
+ */
+async function syncAllRolesOnBoot(client) {
+  try {
+    const allCfgs = await getAll();
+    const usersToSync = new Set();
+    
+    for (const cfg of allCfgs) {
+      if (!cfg.partnerChannelId || !cfg.adChannelId) continue;
+      if (cfg.adminId) usersToSync.add(cfg.adminId);
+      
+      const g = client.guilds.cache.get(cfg.guild_id);
+      if (g && g.ownerId) usersToSync.add(g.ownerId);
+    }
+
+    for (const userId of usersToSync) {
+      await syncUserRoles(userId, client);
+    }
+  } catch (err) {
+    console.error('Failed to run global role sync on boot:', err);
+  }
+}
+
+module.exports = { get, set, getAll, remove, syncUserRoles, syncAllRolesOnBoot };
 
 

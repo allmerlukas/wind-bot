@@ -17,7 +17,8 @@ function buildStaffMenu() {
         new StringSelectMenuOptionBuilder().setLabel('Server Check').setValue('check').setDescription('Look up a server by ID').setEmoji('🔍'),
         new StringSelectMenuOptionBuilder().setLabel('View Errors').setValue('error').setDescription('See recent bot errors').setEmoji('⚠️'),
         new StringSelectMenuOptionBuilder().setLabel('Generate Invite').setValue('invite').setDescription('Generate an invite link for a server').setEmoji('🔗'),
-        new StringSelectMenuOptionBuilder().setLabel('Strike Server Request').setValue('strike-request').setDescription('Request owner approval to strike a server').setEmoji('🛑')
+        new StringSelectMenuOptionBuilder().setLabel('Strike Server Request').setValue('strike-request').setDescription('Request owner approval to strike a server').setEmoji('🛑'),
+        new StringSelectMenuOptionBuilder().setLabel('Strike Remove Request').setValue('strike-remove-request').setDescription('Request owner approval to remove a strike').setEmoji('🟢')
       )
   );
 }
@@ -63,7 +64,7 @@ async function handleDashboardSelect(interaction) {
     if (action === 'error') return handleError(interaction.client, interaction, 'staff');
   }
 
-  if (action === 'invite' || action === 'strike-request') {
+  if (action === 'invite' || action === 'strike-request' || action === 'strike-remove-request') {
     if (interaction.client.guilds.cache.size === 0) return interaction.reply({ content: '❌ The bot is not in any servers.', ephemeral: true });
     return interaction.update({
       content: `👇 **Select a server:**`,
@@ -91,14 +92,15 @@ async function handleServerSelect(interaction) {
     return editReplyWithBack(interaction, 'staff', { content: `🔗 **Invite for ${name}:** ${invite.url}`, components: [] });
   }
 
-  if (action === 'strike-request') {
+  if (action === 'strike-request' || action === 'strike-remove-request') {
+    const isRemove = action === 'strike-remove-request';
     const modal = new ModalBuilder()
-      .setCustomId(`staff_modal:strike-request:${guildId}`)
-      .setTitle('Strike Request');
+      .setCustomId(`staff_modal:${action}:${guildId}`)
+      .setTitle(isRemove ? 'Strike Removal Request' : 'Strike Request');
     
     const reasonInput = new TextInputBuilder()
       .setCustomId('reason')
-      .setLabel('Reason for the strike')
+      .setLabel(isRemove ? 'Reason for removing strike' : 'Reason for the strike')
       .setStyle(TextInputStyle.Paragraph)
       .setRequired(true);
       
@@ -112,8 +114,9 @@ async function handleModalSubmit(interaction) {
   const action = parts[1];
   const guildId = parts[2];
 
-  if (action === 'strike-request') {
+  if (action === 'strike-request' || action === 'strike-remove-request') {
     await interaction.deferReply({ ephemeral: true });
+    const isRemove = action === 'strike-remove-request';
     const reason = interaction.fields.getTextInputValue('reason');
     const targetGuild = interaction.client.guilds.cache.get(guildId);
     const targetName = targetGuild?.name ?? guildId;
@@ -130,19 +133,19 @@ async function handleModalSubmit(interaction) {
     if (!logChannel || !logChannel.isTextBased()) return editReplyWithBack(interaction, 'staff', '❌ The owner server log channel is invalid.');
 
     const embed = new EmbedBuilder()
-      .setColor('#FFA500')
-      .setTitle('🛑 Pending Strike Request')
+      .setColor(isRemove ? '#57F287' : '#FFA500')
+      .setTitle(isRemove ? '🟢 Pending Strike Removal Request' : '🛑 Pending Strike Request')
       .setDescription(`**Requested by:** <@${interaction.user.id}>\n**Target Server:** ${targetName} (\`${guildId}\`)\n\n**Reason:**\n> ${reason}`)
       .setTimestamp();
 
     const buttons = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(`staff_strike_accept:${guildId}:${interaction.user.id}`).setLabel('Accept Strike').setStyle(ButtonStyle.Success).setEmoji('✅'),
-      new ButtonBuilder().setCustomId(`staff_strike_deny:${guildId}:${interaction.user.id}`).setLabel('Deny Strike').setStyle(ButtonStyle.Danger).setEmoji('❌')
+      new ButtonBuilder().setCustomId(isRemove ? `staff_strike_rem_accept:${guildId}:${interaction.user.id}` : `staff_strike_accept:${guildId}:${interaction.user.id}`).setLabel(isRemove ? 'Accept Removal' : 'Accept Strike').setStyle(ButtonStyle.Success).setEmoji('✅'),
+      new ButtonBuilder().setCustomId(isRemove ? `staff_strike_rem_deny:${guildId}:${interaction.user.id}` : `staff_strike_deny:${guildId}:${interaction.user.id}`).setLabel(isRemove ? 'Deny Removal' : 'Deny Strike').setStyle(ButtonStyle.Danger).setEmoji('❌')
     );
 
     try {
       await logChannel.send({ content: `<@${process.env.OWNER_ID}>`, embeds: [embed], components: [buttons] });
-      return editReplyWithBack(interaction, 'staff', '✅ Strike request sent to the owner for approval!');
+      return editReplyWithBack(interaction, 'staff', `✅ Strike ${isRemove ? 'removal ' : ''}request sent to the owner for approval!`);
     } catch (err) {
       return interaction.editReply(`❌ Failed to send request to owner's log channel: ${err.message}`);
     }

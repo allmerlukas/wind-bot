@@ -14,7 +14,7 @@ module.exports = {
   async execute(guild) {
     try {
       await setupStore.set(guild.id, 'strikes', 0);
-      await setupStore.syncOwnerRoles(guild.ownerId, guild.client);
+      await setupStore.syncUserRoles(guild.ownerId, guild.client);
       console.log(`[GuildDelete] Reset strikes and synced owner roles for ${guild.name} (${guild.id}) on bot removal.`);
     } catch (err) {
       console.error(`[GuildDelete] Failed to reset strikes for ${guild.id}:`, err);

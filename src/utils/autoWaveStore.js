@@ -19,4 +19,15 @@ async function setLastReceived(guildId) {
     .upsert({ guild_id: guildId, last_received_at: Date.now() }, { onConflict: 'guild_id' });
 }
 
-module.exports = { getLastReceived, setLastReceived };
+async function getAllLastReceived() {
+  const { data } = await supabase.from('auto_wave').select('guild_id, last_received_at');
+  const map = new Map();
+  if (data) {
+    for (const row of data) {
+      map.set(row.guild_id, row.last_received_at);
+    }
+  }
+  return map;
+}
+
+module.exports = { getLastReceived, setLastReceived, getAllLastReceived };

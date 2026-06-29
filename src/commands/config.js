@@ -90,15 +90,22 @@ const STEPS = [
   },
   {
     id:          'cfg_member_role',
-    label:       '👥 Member Role',
+    storeKey:    'memberRoleId',
+    label:       'Member Role',
     description: 'Select the role held by **most** of your members (≥90%). Used as a ping for large incoming servers.',
     type:        'role',
-    storeKey:    'memberRoleId',
+    optional:    false,
     checkFn:     async (role, guild) => {
+      if (role.id === guild.id) {
+        return '❌ You cannot select the `@everyone` role. Auto-Wave does not allow pinging everyone. Please select a specific Member role instead.';
+      }
+      // Force fetch members to ensure accurate count
+      await guild.members.fetch();
       const memberCount = guild.memberCount;
       const roleCount   = role.members.size;
       const pct         = memberCount > 0 ? roleCount / memberCount : 0;
-      if (pct < 0.90) {
+      
+      if (pct < 0.9) {
         return `❌ **${role.name}** only covers **${roleCount}** out of **${memberCount}** members (${Math.round(pct * 100)}%).\n\nThe **Member Role** must be held by ≥ 90% of your members — it should be the base role everyone receives on join.\n\n💡 If you don't have such a role, create a \`@Member\` role, assign it to everyone (including your bots), and select it here.`;
       }
       return null;
@@ -106,15 +113,22 @@ const STEPS = [
   },
   {
     id:          'cfg_ping_role',
-    label:       '🔔 Partner Ping Role',
+    storeKey:    'partnerPingRoleId',
+    label:       'Partner Ping Role',
     description: 'Select the role pinged when a partner ad arrives. Must cover **at least 10%** of your members.',
     type:        'role',
-    storeKey:    'partnerPingRoleId',
+    optional:    false,
     checkFn:     async (role, guild) => {
+      if (role.id === guild.id) {
+        return '❌ You cannot select the `@everyone` role. Auto-Wave does not allow pinging everyone. Please select a specific Partner Ping role instead.';
+      }
+      // Force fetch members to ensure accurate count
+      await guild.members.fetch();
       const memberCount = guild.memberCount;
       const roleCount   = role.members.size;
       const pct         = memberCount > 0 ? roleCount / memberCount : 0;
-      if (pct < 0.10) {
+      
+      if (pct < 0.1) {
         return `❌ **${role.name}** only covers **${roleCount}** out of **${memberCount}** members (${Math.round(pct * 100)}%).\n\nThe **Partner Ping Role** must be held by ≥ 10% of your members so partner ads actually reach people.\n\n💡 If you don't have a role that big, you can give your bots this role too — or create a new \`@Partner Ping\` role and have members opt in.`;
       }
       return null;
@@ -241,42 +255,6 @@ async function buildSummary(guildId, interaction = null) {
   const cfg = await setupStore.get(guildId);
   const fields = [
     { name: '📢 Partner Channel',   value: cfg.partnerChannelId  ? `<#${cfg.partnerChannelId}>`  : '`not set`', inline: true },
-    { name: '📝 Ad Channel',         value: cfg.adChannelId        ? `<#${cfg.adChannelId}>`        : '`not set`', inline: true },
-    { name: '📋 Log Channel',         value: cfg.logChannelId       ? `<#${cfg.logChannelId}>`       : '`not set`', inline: true },
-    { name: '👥 Member Role',         value: cfg.memberRoleId       ? `<@&${cfg.memberRoleId}>`      : '`not set`', inline: true },
-    { name: '🔔 Partner Ping Role',   value: cfg.partnerPingRoleId  ? `<@&${cfg.partnerPingRoleId}>` : '`not set`', inline: true },
-    { name: '⏱️ Partner Delay',       value: `${cfg.partnerDelayHours ?? 24}h`,                       inline: true },
-    { name: '👥 Member Range',        value: (cfg.minMembers != null && cfg.maxMembers != null) ? `${cfg.minMembers}–${cfg.maxMembers} members` : '`any size`', inline: true },
-    { name: '📣 Paid Ads',           value: cfg.allowPaidAds ? '`allowed`' : '`not allowed`',                inline: true },
-  ];
-
-  const isReady = cfg.partnerChannelId && cfg.adChannelId && cfg.logChannelId && cfg.memberRoleId && cfg.partnerPingRoleId && cfg.partnerDelayHours;
-
-  if (interaction && isReady) {
-    try {
-      await setupStore.syncOwnerRoles(interaction.guild.ownerId, interaction.client);
-    } catch (e) {
-      console.error('Failed to sync roles:', e);
-    }
-  }
-
-  return new EmbedBuilder()
-    .setColor(isReady ? 0x57F287 : 0xFEE75C)
-    .setTitle('✅ Config Saved!')
-    .setDescription(
-      isReady
-        ? '🌊 This server is now enrolled in Auto-Wave!'
-        : '⚠️ Set at least `Partner Channel` and `Ad Channel` to enable Auto-Wave.'
-    )
-    .addFields(fields)
-    .setFooter({ text: 'Auto-Wave • Run /config setup again to change anything' })
-    .setTimestamp();
-}
-
-// ─── Command export ───────────────────────────────────────────────────────────
-
-module.exports = {
-  data: new SlashCommandBuilder()
     .setName('config')
     .setDescription('Configure the Auto-Wave partner system for this server')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
@@ -373,3 +351,63 @@ module.exports = {
   buildStepMessage,
   buildSummary,
 };
+
+
+async function handleComponent(interaction) {
+      // ── Config wizard: modal submit (delay hours) ─────────────────────────────
+      if (interaction.isModalSubmit() && interaction.customId.startsWith('cfg_delay_modal:')) {
+        const stepIndex = parseInt(interaction.customId.split(':')[1], 10);
+        const raw       = interaction.fields.getTextInputValue('cfg_delay_input');
+        const hours     = parseInt(raw, 10);
+
+        if (isNaN(hours) || hours < 1) {
+          await interaction.reply({ content: '❌ Please enter a valid number of hours (minimum 1).', ephemeral: true });
+          return;
+        }
+
+        await setupStore.set(interaction.guildId, 'partnerDelayHours', Math.max(hours, 1));
+
+        const nextStep = stepIndex + 1;
+        if (nextStep >= STEPS.length) {
+          return interaction.update({ embeds: [await buildSummary(interaction.guildId, interaction)], components: [] });
+        }
+        return interaction.update(await buildStepMessage(interaction.guildId, nextStep));
+      }
+
+      // ── Config wizard: modal submit (member range) ───────────────────────────────
+      if (interaction.isModalSubmit() && interaction.customId.startsWith('cfg_memberrange_modal:')) {
+        const stepIndex = parseInt(interaction.customId.split(':')[1], 10);
+        const raw       = interaction.fields.getTextInputValue('cfg_memberrange_input').trim();
+
+        if (!raw) {
+          // Blank input = clear restriction
+          await setupStore.set(interaction.guildId, 'minMembers', null);
+          await setupStore.set(interaction.guildId, 'maxMembers', null);
+        } else {
+          const parts = raw.split('-');
+          const minVal = parseInt(parts[0], 10);
+          const maxVal = parseInt(parts[1], 10);
+
+          if (parts.length !== 2 || isNaN(minVal) || isNaN(maxVal) || minVal < 1 || maxVal < minVal) {
+            await interaction.reply({
+              content: '❌ Invalid format. Use `min-max` (e.g. `100-5000`) where min ≥ 1 and max ≥ min.',
+              ephemeral: true,
+            });
+            return;
+          }
+
+          await setupStore.set(interaction.guildId, 'minMembers', minVal);
+          await setupStore.set(interaction.guildId, 'maxMembers', maxVal);
+        }
+
+        const nextStep = stepIndex + 1;
+        if (nextStep >= STEPS.length) {
+          return interaction.update({ embeds: [await buildSummary(interaction.guildId, interaction)], components: [] });
+        }
+        return interaction.update(await buildStepMessage(interaction.guildId, nextStep));
+      }
+
+
+}
+
+module.exports.handleComponent = handleComponent;

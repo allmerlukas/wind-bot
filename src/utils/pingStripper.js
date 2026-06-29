@@ -14,21 +14,7 @@ const PING_RE = /@everyone|@here|<@!?\d+>|<@&\d+>/g;
 function stripPings(text) {
   if (!text) return text;
   
-  return text.replace(PING_RE, (match) => {
-    if (match === '@everyone') {
-      return '[placeholder for everyone ping]';
-    }
-    if (match === '@here') {
-      return '[placeholder for here ping]';
-    }
-    if (match.startsWith('<@&')) {
-      return '[placeholder for role ping]';
-    }
-    if (match.startsWith('<@')) {
-      return '[placeholder for member ping]';
-    }
-    return '';
-  }).replace(/\s{2,}/g, ' ').trim();
+  return text.replace(PING_RE, '').replace(/\s{2,}/g, ' ').trim();
 }
 
 module.exports = { stripPings, PING_RE };

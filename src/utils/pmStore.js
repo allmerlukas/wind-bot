@@ -82,6 +82,16 @@ async function pairedRecently(userId, guildA, guildB) {
   return Date.now() - data.last_paired_at < PM_COOLDOWN_MS;
 }
 
+async function getRecentPairsForUser(userId) {
+  const cutoff = Date.now() - PM_COOLDOWN_MS;
+  const { data } = await supabase
+    .from('pm_pairs')
+    .select('guild_a, guild_b')
+    .eq('user_id', userId)
+    .gt('last_paired_at', cutoff);
+  return data || [];
+}
+
 module.exports = {
   addGuild,
   removeGuild,
@@ -91,5 +101,6 @@ module.exports = {
   setReadChannel,
   recordPair,
   pairedRecently,
+  getRecentPairsForUser,
   PM_COOLDOWN_MS,
 };

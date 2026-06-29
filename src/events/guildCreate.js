@@ -112,7 +112,10 @@ module.exports = {
 
         await user.send({ embeds: [embed] }).catch(() => {});
       }
-
+      
+      const setupStore = require('../utils/setupStore');
+      await setupStore.syncUserRoles(guild.ownerId, client);
+      
     } catch (err) {
       console.error(`❌ Error in guildCreate for ${guild.name}:`, err);
     }

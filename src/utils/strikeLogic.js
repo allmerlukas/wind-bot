@@ -36,6 +36,34 @@ async function addStrike(client, targetGuildId, reason) {
   return { newStrikes, strikeBar, warn, name };
 }
 
+/**
+ * Removes a strike from a guild, logs it if a log channel is configured, and returns formatted strings for UI.
+ */
+async function removeStrike(client, targetGuildId) {
+  const guild = client.guilds.cache.get(targetGuildId);
+  const name = guild?.name ?? targetGuildId;
+  const cfg = await setupStore.get(targetGuildId);
+  const currentStrikes = cfg.strikes ?? 0;
+  const newStrikes = Math.max(0, currentStrikes - 1);
+  
+  await setupStore.set(targetGuildId, 'strikes', newStrikes);
+
+  if (cfg.logChannelId && guild) {
+    const logChannel = guild.channels.cache.get(cfg.logChannelId);
+    if (logChannel?.isTextBased()) {
+      try { 
+        await logChannel.send(
+          `🟢 **STRIKE REMOVED (${newStrikes}/3):** A strike was manually removed from your server by the Wind Bot team.`
+        ); 
+      } catch (err) {}
+    }
+  }
+
+  const strikeBar = ['□','□','□'].map((_, i) => i < newStrikes ? '🟥' : '□').join(' ');
+  return { newStrikes, strikeBar, name };
+}
+
 module.exports = {
-  addStrike
+  addStrike,
+  removeStrike
 };

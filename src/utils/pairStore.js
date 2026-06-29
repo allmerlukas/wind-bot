@@ -30,4 +30,23 @@ async function pairedRecently(idA, idB) {
   return Date.now() - data.paired_at < PAIR_COOLDOWN_MS;
 }
 
-module.exports = { recordPair, pairedRecently, PAIR_COOLDOWN_MS };
+async function getRecentPairsAll() {
+  const cutoff = Date.now() - PAIR_COOLDOWN_MS;
+  const { data } = await supabase
+    .from('wave_pairs')
+    .select('guild_a, guild_b')
+    .gt('paired_at', cutoff);
+  return data || [];
+}
+
+async function getRecentPairsForGuild(guildId) {
+  const cutoff = Date.now() - PAIR_COOLDOWN_MS;
+  const { data } = await supabase
+    .from('wave_pairs')
+    .select('guild_a, guild_b')
+    .gt('paired_at', cutoff)
+    .or(`guild_a.eq.${guildId},guild_b.eq.${guildId}`);
+  return data || [];
+}
+
+module.exports = { recordPair, pairedRecently, getRecentPairsAll, getRecentPairsForGuild, PAIR_COOLDOWN_MS };

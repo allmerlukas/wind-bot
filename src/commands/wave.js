@@ -67,7 +67,7 @@ async function validateAfterSend(interaction, wave, waveKey) {
       `Send the **new ad** for Server ${first.adIndex + 1} here to fix it:`,
     ].join('\n'));
 
-    waveSessions.startDmFixSession(interaction.user.id, waveKey, wave.displayName, deadLinks);
+    waveSessions.startDmFixSession(interaction.user.id, interaction.channel.id, waveKey, wave.displayName, deadLinks);
   } catch (err) {
     console.error('Dead link DM failed:', err.message);
   }
@@ -363,7 +363,7 @@ module.exports = {
         ? ` Overwriting existing wave (had ${existing.ads?.length ?? 0} servers).`
         : '';
 
-      waveSessions.startSession(interaction.user.id, name);
+      waveSessions.startSession(interaction.user.id, interaction.channel.id, name);
 
       return interaction.reply({
         content: [
@@ -390,7 +390,7 @@ module.exports = {
       const existingAds = wave.ads ?? wave.links ?? [];
       const nextNum = existingAds.length + 1;
 
-      waveSessions.startAddSession(interaction.user.id, name, existingAds);
+      waveSessions.startAddSession(interaction.user.id, interaction.channel.id, name, existingAds);
 
       return interaction.reply({
         content: [
@@ -528,7 +528,7 @@ module.exports = {
       }
 
       // spliceIndex = afterNum (splice(0) = before first, splice(2) = after second)
-      waveSessions.startInsertSession(interaction.user.id, name, afterNum);
+      waveSessions.startInsertSession(interaction.user.id, interaction.channel.id, name, afterNum);
 
       const positionDesc = afterNum === 0
         ? 'at the **beginning** (before server 1)'
@@ -563,7 +563,7 @@ module.exports = {
         });
       }
 
-      waveSessions.startEditSession(interaction.user.id, name, serverIndex);
+      waveSessions.startEditSession(interaction.user.id, interaction.channel.id, name, serverIndex);
 
       return interaction.reply({
         content: [

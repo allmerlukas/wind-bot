@@ -21,59 +21,11 @@ module.exports = {
     // because if an interaction expires, it throws DiscordAPIError[10062]
     // and crashes the bot otherwise.
     try {
-      // ── Config wizard: modal submit (delay hours) ─────────────────────────────
-      if (interaction.isModalSubmit() && interaction.customId.startsWith('cfg_delay_modal:')) {
-        const stepIndex = parseInt(interaction.customId.split(':')[1], 10);
-        const raw       = interaction.fields.getTextInputValue('cfg_delay_input');
-        const hours     = parseInt(raw, 10);
-
-        if (isNaN(hours) || hours < 1) {
-          await interaction.reply({ content: '❌ Please enter a valid number of hours (minimum 1).', ephemeral: true });
-          return;
-        }
-
-        await setupStore.set(interaction.guildId, 'partnerDelayHours', Math.max(hours, 1));
-
-        const nextStep = stepIndex + 1;
-        if (nextStep >= STEPS.length) {
-          return interaction.update({ embeds: [await buildSummary(interaction.guildId, interaction)], components: [] });
-        }
-        return interaction.update(await buildStepMessage(interaction.guildId, nextStep));
+      if (interaction.customId && interaction.customId.startsWith('cfg_')) {
+        const configCmd = require('../commands/config');
+        return configCmd.handleComponent(interaction);
       }
-
-      // ── Config wizard: modal submit (member range) ───────────────────────────────
-      if (interaction.isModalSubmit() && interaction.customId.startsWith('cfg_memberrange_modal:')) {
-        const stepIndex = parseInt(interaction.customId.split(':')[1], 10);
-        const raw       = interaction.fields.getTextInputValue('cfg_memberrange_input').trim();
-
-        if (!raw) {
-          // Blank input = clear restriction
-          await setupStore.set(interaction.guildId, 'minMembers', null);
-          await setupStore.set(interaction.guildId, 'maxMembers', null);
-        } else {
-          const parts = raw.split('-');
-          const minVal = parseInt(parts[0], 10);
-          const maxVal = parseInt(parts[1], 10);
-
-          if (parts.length !== 2 || isNaN(minVal) || isNaN(maxVal) || minVal < 1 || maxVal < minVal) {
-            await interaction.reply({
-              content: '❌ Invalid format. Use `min-max` (e.g. `100-5000`) where min ≥ 1 and max ≥ min.',
-              ephemeral: true,
-            });
-            return;
-          }
-
-          await setupStore.set(interaction.guildId, 'minMembers', minVal);
-          await setupStore.set(interaction.guildId, 'maxMembers', maxVal);
-        }
-
-        const nextStep = stepIndex + 1;
-        if (nextStep >= STEPS.length) {
-          return interaction.update({ embeds: [await buildSummary(interaction.guildId, interaction)], components: [] });
-        }
-        return interaction.update(await buildStepMessage(interaction.guildId, nextStep));
-      }
-
+      
       // ── Partner edit: modal submit ────────────────────────────────────────────────
       if (interaction.isModalSubmit() && interaction.customId.startsWith('pm_edit_modal:')) {
         return partnerCmd.handleModal(interaction);
@@ -354,7 +306,8 @@ module.exports = {
       if (interaction.isButton() && interaction.customId.startsWith('cfg_paid_ads_final_no:')) {
         const stepIndex = parseInt(interaction.customId.split(':')[1], 10);
         await setupStore.set(interaction.guildId, 'allowPaidAds', false);
-        await setupStore.syncOwnerRoles(interaction.guild.ownerId, interaction.client);
+        await setupStore.syncUserRoles(interaction.guild.ownerId, interaction.client);
+        await setupStore.syncUserRoles(interaction.user.id, interaction.client);
         const nextStep = stepIndex + 1;
         if (nextStep >= STEPS.length) {
           return interaction.update({ embeds: [await buildSummary(interaction.guildId, interaction)], components: [] });
@@ -374,8 +327,10 @@ module.exports = {
 
       // ── Config remove: confirm/cancel ───────────────────────────────────────────
       if (interaction.isButton() && interaction.customId === 'cfg_remove_confirm') {
+        const adminId = interaction.user.id;
         await setupStore.remove(interaction.guildId);
-        await setupStore.syncOwnerRoles(interaction.guild.ownerId, interaction.client);
+        await setupStore.syncUserRoles(interaction.guild.ownerId, interaction.client);
+        await setupStore.syncUserRoles(adminId, interaction.client);
         return interaction.update({
           embeds: [
             new EmbedBuilder()
@@ -546,7 +501,7 @@ module.exports = {
         }
 
         // ── Owner Strike Approval ───────────────────────────────────────────────
-        if (interaction.customId.startsWith('staff_strike_accept:') || interaction.customId.startsWith('staff_strike_deny:')) {
+        if (interaction.customId.startsWith('staff_strike_accept:') || interaction.customId.startsWith('staff_strike_deny:') || interaction.customId.startsWith('staff_strike_rem_accept:') || interaction.customId.startsWith('staff_strike_rem_deny:')) {
           if (interaction.user.id !== process.env.OWNER_ID) {
             return interaction.reply({ content: '🔒 Only the bot owner can approve or deny strike requests.', ephemeral: true });
           }
@@ -559,7 +514,9 @@ module.exports = {
           
           if (action === 'staff_strike_accept') {
             const { addStrike } = require('../utils/strikeLogic');
-            const { newStrikes, strikeBar, warn, name } = await addStrike(interaction.client, guildId, "Approved by Owner");
+            const desc = interaction.message.embeds[0].description || '';
+            const reason = desc.split('**Reason:**\n> ')[1] || 'Approved by Owner';
+            const { newStrikes, strikeBar, warn, name } = await addStrike(interaction.client, guildId, reason);
             
             const embed = EmbedBuilder.from(interaction.message.embeds[0])
               .setColor('#00FF00')
@@ -567,10 +524,26 @@ module.exports = {
               .addFields({ name: 'Result', value: `Strike **${newStrikes}/3** added to **${name}** ${strikeBar}${warn}` });
               
             await interaction.message.edit({ embeds: [embed], components: [] });
-          } else {
+          } else if (action === 'staff_strike_deny') {
             const embed = EmbedBuilder.from(interaction.message.embeds[0])
               .setColor('#FF0000')
               .setTitle('❌ Strike Request Denied');
+              
+            await interaction.message.edit({ embeds: [embed], components: [] });
+          } else if (action === 'staff_strike_rem_accept') {
+            const { removeStrike } = require('../utils/strikeLogic');
+            const { newStrikes, strikeBar, name } = await removeStrike(interaction.client, guildId);
+            
+            const embed = EmbedBuilder.from(interaction.message.embeds[0])
+              .setColor('#00FF00')
+              .setTitle('✅ Strike Removal Accepted')
+              .addFields({ name: 'Result', value: `Strike removed. **${name}** now has **${newStrikes}/3** strikes.\n${strikeBar}` });
+              
+            await interaction.message.edit({ embeds: [embed], components: [] });
+          } else if (action === 'staff_strike_rem_deny') {
+            const embed = EmbedBuilder.from(interaction.message.embeds[0])
+              .setColor('#FF0000')
+              .setTitle('❌ Strike Removal Denied');
               
             await interaction.message.edit({ embeds: [embed], components: [] });
           }
@@ -622,6 +595,12 @@ module.exports = {
       // 10062 = Unknown interaction (expired or already handled)
       if (err.code !== 10062) {
         console.error(`❌ Component handling error [${interaction.customId}]:`, err);
+        const reply = { content: `❌ Something went wrong: \`${err.message}\``, ephemeral: true };
+        if (interaction.replied || interaction.deferred) {
+          await interaction.followUp(reply).catch(() => {});
+        } else {
+          await interaction.reply(reply).catch(() => {});
+        }
       }
     }
 

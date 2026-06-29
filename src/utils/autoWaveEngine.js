@@ -36,6 +36,7 @@ const autoWaveStore                                = require('./autoWaveStore');
 const { recordPair, pairedRecently }               = require('./pairStore');
 const { isBlacklisted, getWhitelistedDomains }     = require('./blacklistStore');
 const { logError }                                 = require('./errorStore');
+const { stripPings }                               = require('./pingStripper');
 
 const TICK_MS         = 30 * 60 * 1000;
 const MIN_MEMBERS     = 10;
@@ -97,7 +98,7 @@ async function fetchAndCacheAd(guild, cfg) {
 
   if (!adMsg) return null;
 
-  return adMsg.content.trim() || null;
+  return stripPings(adMsg.content.trim()) || null;
 }
 
 // ─── Ad validation ────────────────────────────────────────────────────────────
@@ -222,7 +223,7 @@ function buildAddBotRow(clientId) {
 // Returns null if ok, or an internal failure code.
 // Intentionally vague in guild-facing messages.
 
-async function validateGuild(guildId, guild, cfg) {
+async function validateGuild(guildId, guild, cfg, blacklistedSet) {
   if (!cfg.partnerChannelId) return 'no_partner_channel';
   if (!cfg.adChannelId)      return 'no_ad_channel';
   if (!cfg.logChannelId)     return 'no_log_channel';
@@ -239,7 +240,7 @@ async function validateGuild(guildId, guild, cfg) {
   if (!adChannel?.isTextBased())      return 'ad_channel_inaccessible';
   if (me && !adChannel.permissionsFor(me).has('ViewChannel')) return 'ad_channel_inaccessible';
 
-  if (await isBlacklisted(guildId))  return 'blacklisted';
+  if (blacklistedSet.has(guildId))  return 'blacklisted';
   return null;
 }
 

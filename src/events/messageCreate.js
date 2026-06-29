@@ -19,7 +19,7 @@ module.exports = {
 
     // ── Wave session handler ──────────────────────────────────────────────────
     const session = waveSessions.getSession(message.author.id);
-    if (session) {
+    if (session && message.channel.id === session.channelId) {
       const content = message.content.trim();
       const lower = content.toLowerCase();
 

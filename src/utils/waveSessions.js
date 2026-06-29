@@ -5,25 +5,35 @@
 // dmFix:  { type: 'dmFix', waveKey, displayName, deadLinks: [{adIndex}], queueIdx }
 const sessions = new Map();
 
-function startSession(userId, waveName) {
-  sessions.set(userId, { type: 'create', waveName, ads: [] });
+// Run a cleanup interval every 5 minutes to clear sessions older than 15 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [userId, session] of sessions.entries()) {
+    if (now - session.createdAt > 15 * 60 * 1000) {
+      sessions.delete(userId);
+    }
+  }
+}, 5 * 60 * 1000);
+
+function startSession(userId, channelId, waveName) {
+  sessions.set(userId, { type: 'create', channelId, waveName, ads: [], createdAt: Date.now() });
 }
 
 // Like startSession but pre-fills with existing ads so the user continues from where they left off
-function startAddSession(userId, waveName, existingAds) {
-  sessions.set(userId, { type: 'create', waveName, ads: [...existingAds] });
+function startAddSession(userId, channelId, waveName, existingAds) {
+  sessions.set(userId, { type: 'create', channelId, waveName, ads: [...existingAds], createdAt: Date.now() });
 }
 
-function startEditSession(userId, waveName, serverIndex) {
-  sessions.set(userId, { type: 'edit', waveName, serverIndex });
+function startEditSession(userId, channelId, waveName, serverIndex) {
+  sessions.set(userId, { type: 'edit', channelId, waveName, serverIndex, createdAt: Date.now() });
 }
 
-function startDmFixSession(userId, waveKey, displayName, deadLinks) {
-  sessions.set(userId, { type: 'dmFix', waveKey, displayName, deadLinks, queueIdx: 0 });
+function startDmFixSession(userId, channelId, waveKey, displayName, deadLinks) {
+  sessions.set(userId, { type: 'dmFix', channelId, waveKey, displayName, deadLinks, queueIdx: 0, createdAt: Date.now() });
 }
 
-function startInsertSession(userId, waveName, spliceIndex) {
-  sessions.set(userId, { type: 'insert', waveName, spliceIndex });
+function startInsertSession(userId, channelId, waveName, spliceIndex) {
+  sessions.set(userId, { type: 'insert', channelId, waveName, spliceIndex, createdAt: Date.now() });
 }
 
 function getSession(userId) {

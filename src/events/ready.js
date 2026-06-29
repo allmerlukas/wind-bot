@@ -15,5 +15,9 @@ module.exports = {
 
     // Start the Auto-Wave engine (first tick after 30 min)
     startAutoWave(client);
+
+    // Sync all user roles on boot
+    const setupStore = require('../utils/setupStore');
+    setupStore.syncAllRolesOnBoot(client);
   }
 };
