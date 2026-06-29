@@ -255,6 +255,44 @@ async function buildSummary(guildId, interaction = null) {
   const cfg = await setupStore.get(guildId);
   const fields = [
     { name: '📢 Partner Channel',   value: cfg.partnerChannelId  ? `<#${cfg.partnerChannelId}>`  : '`not set`', inline: true },
+    { name: '📝 Ad Channel',         value: cfg.adChannelId        ? `<#${cfg.adChannelId}>`        : '`not set`', inline: true },
+    { name: '📋 Log Channel',         value: cfg.logChannelId       ? `<#${cfg.logChannelId}>`       : '`not set`', inline: true },
+    { name: '👥 Member Role',         value: cfg.memberRoleId       ? `<@&${cfg.memberRoleId}>`      : '`not set`', inline: true },
+    { name: '🔔 Partner Ping Role',   value: cfg.partnerPingRoleId  ? `<@&${cfg.partnerPingRoleId}>` : '`not set`', inline: true },
+    { name: '⏱️ Partner Delay',       value: `${cfg.partnerDelayHours ?? 24}h`,                       inline: true },
+    { name: '👥 Member Range',        value: (cfg.minMembers != null && cfg.maxMembers != null) ? `${cfg.minMembers}–${cfg.maxMembers} members` : '`any size`', inline: true },
+    { name: '📣 Paid Ads',           value: cfg.allowPaidAds ? '`allowed`' : '`not allowed`',                inline: true },
+  ];
+
+  const isReady = cfg.partnerChannelId && cfg.adChannelId && cfg.logChannelId && cfg.memberRoleId && cfg.partnerPingRoleId && cfg.partnerDelayHours;
+
+  if (interaction && isReady) {
+    try {
+      await setupStore.set(guildId, 'adminId', interaction.user.id);
+      await setupStore.syncUserRoles(interaction.guild.ownerId, interaction.client);
+      await setupStore.syncUserRoles(interaction.user.id, interaction.client);
+    } catch (e) {
+      console.error('Failed to sync roles:', e);
+    }
+  }
+
+  return new EmbedBuilder()
+    .setColor(isReady ? 0x57F287 : 0xFEE75C)
+    .setTitle('✅ Config Saved!')
+    .setDescription(
+      isReady
+        ? '🌊 This server is now enrolled in Auto-Wave!'
+        : '⚠️ Set at least `Partner Channel` and `Ad Channel` to enable Auto-Wave.'
+    )
+    .addFields(fields)
+    .setFooter({ text: 'Auto-Wave • Run /config setup again to change anything' })
+    .setTimestamp();
+}
+
+// ─── Command export ───────────────────────────────────────────────────────────
+
+module.exports = {
+  data: new SlashCommandBuilder()
     .setName('config')
     .setDescription('Configure the Auto-Wave partner system for this server')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
