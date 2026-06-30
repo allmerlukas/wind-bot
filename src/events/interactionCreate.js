@@ -97,8 +97,6 @@ module.exports = {
         // Run safety check if defined
         if (step.checkFn && role) {
           await interaction.deferUpdate();
-          // Fetch all members so role.members.size is accurate (cache may be incomplete)
-          try { await interaction.guild.members.fetch(); } catch { /* ignore, best-effort */ }
           const err = await step.checkFn(role, interaction.guild);
           if (err) {
             const msg = await buildStepMessage(interaction.guildId, stepIndex);
