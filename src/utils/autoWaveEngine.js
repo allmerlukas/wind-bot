@@ -34,7 +34,7 @@ const {
 const setupStore                                   = require('./setupStore');
 const autoWaveStore                                = require('./autoWaveStore');
 const { recordPair, pairedRecently }               = require('./pairStore');
-const { isBlacklisted, getWhitelistedDomains }     = require('./blacklistStore');
+const { isBlacklisted, getAllBlacklisted, getWhitelistedDomains } = require('./blacklistStore');
 const { logError }                                 = require('./errorStore');
 const { stripPings }                               = require('./pingStripper');
 
@@ -234,11 +234,11 @@ async function validateGuild(guildId, guild, cfg, blacklistedSet) {
   const pChannel = guild.channels.cache.get(cfg.partnerChannelId);
   if (!pChannel?.isTextBased()) return 'partner_channel_inaccessible';
   const me = guild.members.me;
-  if (me && !pChannel.permissionsFor(me).has(['SendMessages', 'ViewChannel'])) return 'partner_channel_inaccessible';
+  if (me && !pChannel.permissionsFor(me)?.has(['SendMessages', 'ViewChannel'])) return 'partner_channel_inaccessible';
 
   const adChannel = guild.channels.cache.get(cfg.adChannelId);
   if (!adChannel?.isTextBased())      return 'ad_channel_inaccessible';
-  if (me && !adChannel.permissionsFor(me).has('ViewChannel')) return 'ad_channel_inaccessible';
+  if (me && !adChannel.permissionsFor(me)?.has('ViewChannel')) return 'ad_channel_inaccessible';
 
   if (blacklistedSet.has(guildId))  return 'blacklisted';
   return null;
@@ -320,11 +320,13 @@ async function tick(client) {
   try {
     const now = Date.now();
     const readyGuilds = [];
+    const blacklistedList = await getAllBlacklisted();
+    const blacklistedSet = new Set(blacklistedList.map(b => b.guild_id));
 
     // 1. Collect all guilds passing runtime validation ─────────────────────────
     for (const [guildId, guild] of client.guilds.cache) {
       const cfg    = await setupStore.get(guildId);
-      const reason = await validateGuild(guildId, guild, cfg);
+      const reason = await validateGuild(guildId, guild, cfg, blacklistedSet);
 
       if (reason) {
         if (reason !== 'blacklisted') {
