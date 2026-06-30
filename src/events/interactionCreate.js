@@ -21,7 +21,7 @@ module.exports = {
     // because if an interaction expires, it throws DiscordAPIError[10062]
     // and crashes the bot otherwise.
     try {
-      if (interaction.customId && interaction.customId.startsWith('cfg_')) {
+      if (interaction.isModalSubmit() && interaction.customId && (interaction.customId.startsWith('cfg_delay_modal:') || interaction.customId.startsWith('cfg_memberrange_modal:'))) {
         const configCmd = require('../commands/config');
         return configCmd.handleComponent(interaction);
       }
