@@ -99,7 +99,11 @@ const STEPS = [
       if (role.id === guild.id) {
         return '❌ You cannot select the `@everyone` role. Auto-Wave does not allow pinging everyone. Please select a specific Member role instead.';
       }
-      // Ensure accurate calculation based on cache
+      // Smart fetch: only request from Discord API if our cache is missing members
+      if (guild.members.cache.size < guild.memberCount) {
+        try { await guild.members.fetch(); } catch (e) { /* ignore rate limits, use what we have */ }
+      }
+      
       const memberCount = guild.memberCount;
       const roleCount   = role.members.size;
       const pct         = memberCount > 0 ? roleCount / memberCount : 0;
@@ -121,7 +125,11 @@ const STEPS = [
       if (role.id === guild.id) {
         return '❌ You cannot select the `@everyone` role. Auto-Wave does not allow pinging everyone. Please select a specific Partner Ping role instead.';
       }
-      // Ensure accurate calculation based on cache
+      // Smart fetch: only request from Discord API if our cache is missing members
+      if (guild.members.cache.size < guild.memberCount) {
+        try { await guild.members.fetch(); } catch (e) { /* ignore rate limits, use what we have */ }
+      }
+      
       const memberCount = guild.memberCount;
       const roleCount   = role.members.size;
       const pct         = memberCount > 0 ? roleCount / memberCount : 0;
