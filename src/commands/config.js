@@ -109,7 +109,16 @@ const STEPS = [
       const pct         = memberCount > 0 ? roleCount / memberCount : 0;
       
       if (pct < 0.9) {
-        return `❌ **${role.name}** only covers **${roleCount}** out of **${memberCount}** members (${Math.round(pct * 100)}%).\n\nThe **Member Role** must be held by ≥ 90% of your members — it should be the base role everyone receives on join.\n\n💡 If you don't have such a role, create a \`@Member\` role, assign it to everyone (including your bots), and select it here.`;
+        const validRoles = guild.roles.cache
+          .filter(r => r.id !== guild.id && (r.members.size / memberCount) >= 0.9)
+          .map(r => `**${r.name}**`)
+          .slice(0, 3);
+        
+        let suggestion = `💡 If you don't have such a role, create a \`@Member\` role, assign it to everyone, and select it here.`;
+        if (validRoles.length > 0) {
+          suggestion = `💡 **Suggested Roles:** ${validRoles.join(', ')}`;
+        }
+        return `❌ **${role.name}** only covers **${roleCount}** out of **${memberCount}** members (${Math.round(pct * 100)}%).\n\nThe **Member Role** must be held by ≥ 90% of your members — it should be the base role everyone receives on join.\n\n${suggestion}`;
       }
       return null;
     },
@@ -135,7 +144,16 @@ const STEPS = [
       const pct         = memberCount > 0 ? roleCount / memberCount : 0;
       
       if (pct < 0.1) {
-        return `❌ **${role.name}** only covers **${roleCount}** out of **${memberCount}** members (${Math.round(pct * 100)}%).\n\nThe **Partner Ping Role** must be held by ≥ 10% of your members so partner ads actually reach people.\n\n💡 If you don't have a role that big, you can give your bots this role too — or create a new \`@Partner Ping\` role and have members opt in.`;
+        const validRoles = guild.roles.cache
+          .filter(r => r.id !== guild.id && (r.members.size / memberCount) >= 0.1)
+          .map(r => `**${r.name}**`)
+          .slice(0, 3);
+        
+        let suggestion = `💡 If you don't have a role that big, you can give your bots this role too — or create a new \`@Partner Ping\` role and have members opt in.`;
+        if (validRoles.length > 0) {
+          suggestion = `💡 **Suggested Roles:** ${validRoles.join(', ')}`;
+        }
+        return `❌ **${role.name}** only covers **${roleCount}** out of **${memberCount}** members (${Math.round(pct * 100)}%).\n\nThe **Partner Ping Role** must be held by ≥ 10% of your members so partner ads actually reach people.\n\n${suggestion}`;
       }
       return null;
     },
