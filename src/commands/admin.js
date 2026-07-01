@@ -2,6 +2,7 @@ const {
   SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder,
   ModalBuilder, TextInputBuilder, TextInputStyle, PermissionFlagsBits, ChannelSelectMenuBuilder, ChannelType
 } = require('discord.js');
+const { buildBackButtonRow } = require('../utils/dashboardUtils');
 
 // ─── Menu Builders ────────────────────────────────────────────────────────────
 
@@ -25,6 +26,18 @@ function buildAdminChannelMenu() {
       .setPlaceholder('Select a channel for the announcement...')
       .setChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
   );
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+async function editReplyWithBack(interaction, dashType, payload) {
+  let opts = typeof payload === 'string' ? { content: payload } : { ...payload };
+  if (!opts.components) opts.components = [];
+  opts.components.push(buildBackButtonRow(dashType));
+  if (interaction.deferred || interaction.replied) {
+    return interaction.editReply(opts);
+  }
+  return interaction.update(opts);
 }
 
 // ─── Logic Handlers ───────────────────────────────────────────────────────────
@@ -210,7 +223,7 @@ module.exports = {
       .setTitle('🛠️ Admin Dashboard')
       .setDescription('Select an administrative action from the dropdown menu below.')
       .setTimestamp();
-    const components = [buildAdminMenu()];
+    const components = [buildAdminDashboardMenu()];
     
     if (isUpdate) return editReplyWithBack(interaction, 'admin', { embeds: [embed], components });
     return interaction.reply({ embeds: [embed], components, ephemeral: true });
