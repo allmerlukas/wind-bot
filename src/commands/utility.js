@@ -2,6 +2,7 @@ const {
   SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder,
   UserSelectMenuBuilder, PermissionFlagsBits, ApplicationIntegrationType
 } = require('discord.js');
+const { buildBackButtonRow } = require('../utils/dashboardUtils');
 
 // ─── Menu Builders ────────────────────────────────────────────────────────────
 
@@ -26,6 +27,18 @@ function buildUtilityUserMenu(action) {
       .setPlaceholder('Select a user...')
       .setMaxValues(1)
   );
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+async function editReplyWithBack(interaction, dashType, payload) {
+  let opts = typeof payload === 'string' ? { content: payload } : { ...payload };
+  if (!opts.components) opts.components = [];
+  opts.components.push(buildBackButtonRow(dashType));
+  if (interaction.deferred || interaction.replied) {
+    return interaction.editReply(opts);
+  }
+  return interaction.update(opts);
 }
 
 // ─── Logic Handlers ───────────────────────────────────────────────────────────
@@ -176,7 +189,7 @@ module.exports = {
       .setTitle('🔧 Utility Dashboard')
       .setDescription('Select a utility tool from the dropdown menu below.')
       .setTimestamp();
-    const components = [buildUtilityMenu()];
+    const components = [buildUtilityDashboardMenu()];
     
     if (isUpdate) return editReplyWithBack(interaction, 'utility', { embeds: [embed], components });
     return interaction.reply({ embeds: [embed], components, ephemeral: true });
