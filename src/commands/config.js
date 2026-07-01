@@ -99,10 +99,6 @@ const STEPS = [
       if (role.id === guild.id) {
         return '❌ You cannot select the `@everyone` role. Auto-Wave does not allow pinging everyone. Please select a specific Member role instead.';
       }
-      // Smart fetch: only request from Discord API if our cache is missing members
-      if (guild.members.cache.size < guild.memberCount) {
-        try { await guild.members.fetch(); } catch (e) { /* ignore rate limits, use what we have */ }
-      }
       
       const memberCount = guild.memberCount;
       const roleCount   = role.members.size;
@@ -133,10 +129,6 @@ const STEPS = [
     checkFn:     async (role, guild) => {
       if (role.id === guild.id) {
         return '❌ You cannot select the `@everyone` role. Auto-Wave does not allow pinging everyone. Please select a specific Partner Ping role instead.';
-      }
-      // Smart fetch: only request from Discord API if our cache is missing members
-      if (guild.members.cache.size < guild.memberCount) {
-        try { await guild.members.fetch(); } catch (e) { /* ignore rate limits, use what we have */ }
       }
       
       const memberCount = guild.memberCount;
@@ -371,6 +363,10 @@ module.exports = {
 
     // ── /config setup — always start from step 0 so users can fix any misclick ─
     if (sub === 'setup') {
+      // Fetch all members ONCE at wizard start so role percentage checks
+      // are accurate for the entire session without hitting Opcode 8 rate limits.
+      try { await interaction.guild.members.fetch(); } catch { /* best-effort */ }
+
       return interaction.reply({
         ...await buildStepMessage(interaction.guildId, 0),
         ephemeral: true,
